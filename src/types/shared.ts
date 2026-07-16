@@ -15,14 +15,21 @@ export interface OpenTraceViewerMessage {
 
 export type RuntimeMessage = OpenTraceViewerMessage;
 
-/** trace 附件识别规则(命名 / attachment_type 匹配配置)。 */
+/** trace 附件识别方式(二选一)。 */
+export type MatchMode = 'mime' | 'name';
+
+/** trace 附件识别规则(命名 / attachment_type / URL / CORS 匹配配置)。 */
 export interface MatchSettings {
-  /** attachment 的 data-type 含这些关键词之一即直接判定为 trace(约定型,不依赖附件名)。 */
+  /** 识别方式二选一:'mime' 按 MIME 类型关键词匹配 data-type;'name' 按文件名关键词匹配附件名/路径。 */
+  matchMode: MatchMode;
+  /** MIME 类型关键词:matchMode='mime' 时,附件 data-type 含此词即认定为 trace。 */
   traceTypeKeywords: string[];
-  /** data-type 含这些关键词之一视为 zip 类型。 */
-  zipTypeKeywords: string[];
-  /** 附件名/下载路径含这些关键词之一视为含 trace(配合 zipTypeKeywords 使用)。 */
+  /** 文件名关键词:matchMode='name' 时,附件名/下载路径含此词即认定为 trace。 */
   nameKeywords: string[];
+  /** URL 关键词:页面 URL 含此词(任一)才启用自动注入,限制只在 Allure 报告页生效。 */
+  urlKeywords: string[];
+  /** CORS 允许域名:控制 DNR 注入 CORS 头的目标范围。空=允许全部,非空=仅这些域名。 */
+  corsDomains: string[];
 }
 
 /** 插件设置(持久化于 chrome.storage.local 的 `settings` 键)。 */
@@ -33,19 +40,21 @@ export interface Settings {
   match: MatchSettings;
 }
 
-/** 默认设置:与历史硬编码正则保持一致,升级后行为不变。 */
+/** 默认设置。 */
 export const DEFAULT_SETTINGS: Settings = {
   autoInject: true,
   match: {
-    traceTypeKeywords: ['playwright-trace'],
-    zipTypeKeywords: ['zip'],
+    matchMode: 'mime',
+    traceTypeKeywords: ['application/vnd.playwright.trace+zip'],
     nameKeywords: ['trace'],
+    urlKeywords: ['allure'],
+    corsDomains: [],
   },
 };
 
 /**
  * 合并存储中的设置与默认值,补齐缺失字段(兼容旧版本/部分写入)。
- * 兼容旧版仅存 `autoInject` 布尔值的情形。
+ * 兼容旧版仅存 `autoInject` 布尔值的情形;旧版 `zipTypeKeywords` 已废弃,忽略。
  */
 export function normalizeSettings(
   stored: Partial<Settings> | undefined,
@@ -57,11 +66,12 @@ export function normalizeSettings(
       ? DEFAULT_SETTINGS.autoInject
       : legacyAutoInject !== false);
   const match: MatchSettings = {
+    matchMode: stored?.match?.matchMode ?? DEFAULT_SETTINGS.match.matchMode,
     traceTypeKeywords:
       stored?.match?.traceTypeKeywords ?? DEFAULT_SETTINGS.match.traceTypeKeywords,
-    zipTypeKeywords:
-      stored?.match?.zipTypeKeywords ?? DEFAULT_SETTINGS.match.zipTypeKeywords,
     nameKeywords: stored?.match?.nameKeywords ?? DEFAULT_SETTINGS.match.nameKeywords,
+    urlKeywords: stored?.match?.urlKeywords ?? DEFAULT_SETTINGS.match.urlKeywords,
+    corsDomains: stored?.match?.corsDomains ?? DEFAULT_SETTINGS.match.corsDomains,
   };
   return { autoInject, match };
 }

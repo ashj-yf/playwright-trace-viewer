@@ -5,10 +5,12 @@ import type { OpenTraceViewerMessage } from '../types/shared';
 /**
  * 注入到 Allure 报告页面,识别 trace 附件并添加「预览 Trace」按钮。
  *
- * 识别方式(满足其一即可,规则可在 Popup 设置面板自定义):
- * 1. 约定 type(推荐):data-type 命中「Trace 类型关键词」(如 application/vnd.playwright-trace+zip),
- *    不依赖附件名。
- * 2. 兼容:data-type 命中「Zip 类型关键词」(或下载路径以 .zip 结尾),且附件名/路径命中「附件名关键词」。
+ * 识别方式(在设置页二选一):
+ * 1. 按 MIME 类型:附件 data-type 命中「MIME 类型关键词」(如 application/vnd.playwright.trace+zip)。
+ * 2. 按文件名关键词:附件名/下载路径命中「文件名关键词」(如 trace)。
+ *
+ * 仅当页面 URL 命中「URL 关键词」(默认 allure)且开启自动注入时才扫描,
+ * 避免在无关页面跑 MutationObserver。
  *
  * Allure 2.x 附件区真实结构:
  *   <div class="attachment-row" data-type="application/zip" data-uid="...">
@@ -16,7 +18,7 @@ import type { OpenTraceViewerMessage } from '../types/shared';
  *     <div class="link" data-download="data/attachments/xxx.zip" ...>5.9 MiB</div>
  *   </div>
  *
- * 适配 SPA:MutationObserver 防抖扫描。受 Popup「自动注入」开关控制。
+ * 适配 SPA:MutationObserver 防抖扫描。
  */
 
 const BUTTON_FLAG = 'data-atv-injected';
@@ -49,6 +51,11 @@ function matchesAny(value: string, keywords: string[]): boolean {
   return keywords.some((kw) => kw.length > 0 && lower.includes(kw.toLowerCase()));
 }
 
+/** 是否应在本页启用扫描:开关开启且 URL 命中关键词。 */
+function shouldRun(): boolean {
+  return enabled && matchesAny(location.href, match.urlKeywords);
+}
+
 /** 从 Allure attachment-row 提取 trace 下载 URL;非 trace 返回 null。 */
 function getTraceUrlFromRow(row: HTMLElement): string | null {
   const name =
@@ -56,24 +63,25 @@ function getTraceUrlFromRow(row: HTMLElement): string | null {
   const download =
     row.querySelector('[data-download]')?.getAttribute('data-download') || '';
   const type = row.getAttribute('data-type') || '';
-  // 1. 约定 type(推荐):不依赖附件名
-  const isTraceType = matchesAny(type, match.traceTypeKeywords);
-  // 2. 兼容:zip 类型 + 名字/路径含 trace
-  const isZip = matchesAny(type, match.zipTypeKeywords) || /\.zip($|\?)/i.test(download);
-  const hasTrace = matchesAny(name, match.nameKeywords) || matchesAny(download, match.nameKeywords);
-  if (download && (isTraceType || (isZip && hasTrace))) {
+  const matched =
+    match.matchMode === 'mime'
+      ? matchesAny(type, match.traceTypeKeywords)
+      : matchesAny(name, match.nameKeywords) ||
+        matchesAny(download, match.nameKeywords);
+  if (download && matched) {
     return new URL(download, location.href).href;
   }
   return null;
 }
 
-/** 兼容:直接 a[href] 指向 trace.zip 的情形。 */
+/** 兼容:直接 a[href] 指向 trace.zip 的情形(仅文件名模式,mime 模式无 data-type 可判)。 */
 function getTraceUrlFromAnchor(a: HTMLAnchorElement): string | null {
+  if (match.matchMode === 'mime') return null;
   const name = a.textContent?.trim() || '';
   const href = a.href || '';
-  const isZip = /\.zip($|\?|#)/i.test(href);
-  const hasTrace = matchesAny(name, match.nameKeywords) || matchesAny(href, match.nameKeywords);
-  return isZip && hasTrace ? href : null;
+  return matchesAny(name, match.nameKeywords) || matchesAny(href, match.nameKeywords)
+    ? href
+    : null;
 }
 
 function injectButton(container: HTMLElement, traceUrl: string): void {
@@ -106,7 +114,7 @@ function injectButton(container: HTMLElement, traceUrl: string): void {
 
 let scanTimer: number | undefined;
 function scan(): void {
-  if (!enabled) return;
+  if (!shouldRun()) return;
   if (scanTimer) window.clearTimeout(scanTimer);
   scanTimer = window.setTimeout(() => {
     // 1. Allure 2.x attachment-row
@@ -127,7 +135,7 @@ chrome.storage.local.get(['settings', 'autoInject']).then((res) => {
   match = settings.match;
   enabled = settings.autoInject;
   injectStyles();
-  if (!enabled) return;
+  if (!shouldRun()) return;
   scan();
   new MutationObserver(() => scan()).observe(document.body, {
     childList: true,
@@ -141,5 +149,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const settings = normalizeSettings(changes.settings.newValue);
   match = settings.match;
   enabled = settings.autoInject;
-  scan();
+  if (shouldRun()) scan();
 });

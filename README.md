@@ -12,15 +12,16 @@ Allure 报告会把 Playwright 生成的 `trace.zip` 当作普通附件，点击
 - 在线版 `trace.playwright.dev` 需要先下载再手动上传，且有数据外泄顾虑，内网报告不可用；
 - Allure 本身不支持在线预览 trace。
 
-本扩展把 Playwright 官方 Trace Viewer 的前端产物打包进插件，在 Allure 报告页识别 trace 附件并注入「预览 Trace」按钮，点击即在新标签页内离线渲染，**无需命令行、无需上传外部服务**。
+本扩展把 Playwright 官方 Trace Viewer 的前端产物打包进插件，在 Allure 报告页识别 trace 附件并注入「预览 Trace」按钮，点击即在新标签页内渲染，**无需命令行、无需上传外部服务**。
 
 ## 特性
 
 - **自动注入**：在 Allure 用例详情页识别 trace 附件，旁注「▶ 预览 Trace」按钮，适配 Allure SPA 路由切换。
-- **离线自包含**：官方 Trace Viewer 资源全部内置，不依赖任何外部 CDN，内网报告可用。
+- **在线加载**：直接读取附件 URL 在线打开，扩展层不下载、不缓存；通过 `declarativeNetRequest` 注入 CORS 头解决官方 viewer SW 的跨域限制。
+- **离线自包含**：官方 Trace Viewer 前端资源全部内置，不依赖任何外部 CDN，内网报告可用。
 - **多来源加载**：支持从 Allure 附件 URL 加载，也支持在 Popup 中手动拖拽/选择本地 `trace.zip`。
 - **对齐官方体验**：时间线、Screenshots、DOM 快照、Network、Console、Source 等核心视图。
-- **识别规则可配**：通过附件 MIME 类型、附件名关键词自定义 trace 识别规则，适配不同团队约定。
+- **识别规则可配**：识别方式二选一（按 MIME 类型 / 按文件名关键词），并可限定只在 URL 含特定关键词的页面注入。
 - **支持本地报告**：`file://` 协议打开的本地 `allure-report/index.html` 同样可用。
 
 ## 安装
@@ -49,7 +50,7 @@ npm run build
 
 1. 打开 Allure 报告（在线部署或本地 `file://` 均可）。
 2. 进入含 trace 附件的用例详情页，附件旁会自动出现「▶ 预览 Trace」按钮。
-3. 点击按钮，新标签页打开 Trace Viewer 并加载该 trace。
+3. 点击按钮，新标签页打开 Trace Viewer 并在线加载该 trace。
 
 ### 手动打开 trace 文件
 
@@ -57,20 +58,18 @@ npm run build
 
 ### 配置识别规则
 
-点击 Popup 右上角齿轮图标展开设置面板：
+点击 Popup 右上角齿轮图标，在新标签页打开设置页。设置页提供「保存」按钮统一持久化，编辑不会即时生效。
 
 | 设置项 | 说明 | 默认值 |
 |--------|------|--------|
 | 自动注入预览按钮 | 关闭后不在 Allure 页面注入按钮 | 开启 |
-| Trace 类型关键词 | attachment 的 MIME 含此词即判定为 trace（约定型，不依赖附件名） | `playwright-trace` |
-| Zip 类型关键词 | MIME 含此词视为 zip 类型 | `zip` |
-| 附件名关键词 | 附件名/路径含此词视为含 trace（配合 zip 类型使用） | `trace` |
+| 识别方式（二选一） | 「按 MIME 类型」或「按文件名关键词」 | 按 MIME 类型 |
+| MIME 类型关键词 | 识别方式为「按 MIME 类型」时生效：附件 data-type 含此词即判定为 trace | `application/vnd.playwright.trace+zip` |
+| 文件名关键词 | 识别方式为「按文件名关键词」时生效：附件名/路径含此词即判定为 trace | `trace` |
+| URL 关键词 | 页面 URL 含此词（任一）才启用自动注入，限制只在 Allure 报告页生效 | `allure` |
+| CORS 允许域名 | 控制 trace 跨域加载范围。留空=允许全部域名；填入域名（每行一个）则仅对这些域名注入 CORS 头 | 空（允许全部） |
 
-识别逻辑（满足其一即判定为 trace）：
-- MIME 命中「Trace 类型关键词」；
-- MIME 命中「Zip 类型关键词」且附件名/路径命中「附件名关键词」。
-
-每项关键词按行分隔，修改后即时生效并重新扫描页面。
+每项关键词按行分隔。识别方式为二选一：选中「按 MIME 类型」时仅按 MIME 类型关键词匹配 `data-type`；选中「按文件名关键词」时仅按附件名/路径匹配。
 
 ## 开发
 
@@ -95,12 +94,17 @@ npm run typecheck  # TypeScript 类型检查(不产出来)
 ```
 src/
 ├── manifest.json              # Chrome MV3 清单
-├── background/sw.ts           # Service Worker:消息中转,打开预览页
+├── background/sw.ts           # Service Worker:消息中转,打开预览页,初始化设置
+├── background/dnr.ts          # declarativeNetRequest:CORS 头注入(解决 vendor SW 跨域)
 ├── content/injector.ts        # Content Script:识别 trace 附件并注入按钮
-├── popup/                     # 工具栏 Popup:设置 + 手动入口
+├── popup/                     # 工具栏 Popup:手动入口 + 设置入口
 │   ├── popup.html
 │   ├── popup.ts
 │   └── popup.css
+├── options/                   # 设置页(独立标签页)
+│   ├── options.html
+│   ├── options.ts
+│   └── options.css
 ├── viewer/                    # Trace 预览页(壳)
 │   ├── viewer.html
 │   ├── viewer.ts
@@ -116,18 +120,19 @@ scripts/
 
 ```
 Allure 页面 [content script]
-   │ 识别 trace 附件 → 注入「预览」按钮
-   │ 点击 → sendMessage(OPEN_TRACE_VIEWER)
+   │ 识别 trace 附件(URL 含关键词才启用) -> 注入「预览」按钮
+   │ 点击 -> sendMessage(OPEN_TRACE_VIEWER)
    ▼
 [background service worker]
    │ 打开 viewer.html?trace=<url>
    ▼
 [viewer.html]
-   │ fetch 远程 zip → Blob → blob URL
-   │ iframe 内嵌官方 trace-viewer 加载 blob URL → 渲染
+   │ 直接把 trace URL 传给内嵌官方 trace-viewer
+   │ 官方 viewer 的 SW 在线 fetch 远程 trace -> 渲染
+   │ 跨域由 DNR 注入 Access-Control-Allow-* 解决(见 background/dnr.ts)
 ```
 
-用 blob URL 中转是为了绕过官方 viewer 的 Service Worker 跨域 fetch 限制--扩展页拥有 host 权限可直接 fetch 远程附件。
+直接传远程 URL 而非 blob 中转，扩展层不下载 trace；vendor SW 跨域 fetch 的 CORS 限制由 `declarativeNetRequest` 注入响应头解决。
 
 ## 发版
 

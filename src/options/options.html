@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Playwright Trace Viewer 设置</title>
+    <link rel="stylesheet" href="./options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Playwright Trace Viewer 设置</h1>
+
+      <label class="switch">
+        <input type="checkbox" id="auto-inject" checked />
+        <span>自动注入预览按钮</span>
+      </label>
+
+      <fieldset class="mode-field">
+        <legend>识别方式（二选一）</legend>
+        <label class="radio">
+          <input type="radio" name="match-mode" value="mime" id="mode-mime" checked />
+          <span>按 MIME 类型</span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="match-mode" value="name" id="mode-name" />
+          <span>按文件名关键词</span>
+        </label>
+      </fieldset>
+
+      <div class="field" id="mime-field">
+        <label for="trace-type-kw">MIME 类型关键词</label>
+        <small>识别方式选「按 MIME 类型」时生效:附件 data-type 含此词即认定为 trace,每行一个</small>
+        <textarea id="trace-type-kw" rows="3" spellcheck="false" placeholder="application/vnd.playwright.trace+zip"></textarea>
+      </div>
+
+      <div class="field" id="name-field">
+        <label for="name-kw">文件名关键词</label>
+        <small>识别方式选「按文件名关键词」时生效:附件名/下载路径含此词即认定为 trace,每行一个</small>
+        <textarea id="name-kw" rows="3" spellcheck="false" placeholder="trace"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="url-kw">URL 关键词</label>
+        <small>页面 URL 含此词(任一)才启用自动注入,限制只在 Allure 报告页生效,每行一个</small>
+        <textarea id="url-kw" rows="3" spellcheck="false" placeholder="allure"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="cors-kw">CORS 允许域名</label>
+        <small>控制 trace 跨域加载范围。留空=允许全部域名;填入域名(每行一个)则仅对这些域名注入 CORS 头</small>
+        <textarea id="cors-kw" rows="3" spellcheck="false" placeholder="allure.example.com"></textarea>
+      </div>
+
+      <div class="actions">
+        <span id="hint" class="hint-text" hidden></span>
+        <button id="reset-settings" class="link-btn">恢复默认</button>
+        <button id="save-settings" class="primary-btn">保存</button>
+      </div>
+    </div>
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>
