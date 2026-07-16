@@ -94,6 +94,13 @@ function injectButton(container: HTMLElement, traceUrl: string): void {
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // 扩展被重新加载/更新后,旧页面的 content script 上下文会失效,
+    // chrome.runtime 不可用;提示用户刷新页面,避免抛 Extension context invalidated。
+    if (!chrome.runtime?.id) {
+      btn.disabled = true;
+      btn.textContent = '扩展已更新,请刷新页面';
+      return;
+    }
     btn.disabled = true;
     btn.textContent = '打开中…';
     const msg: OpenTraceViewerMessage = {
@@ -102,12 +109,15 @@ function injectButton(container: HTMLElement, traceUrl: string): void {
       caseName: document.title,
       reportUrl: location.href,
     };
-    chrome.runtime.sendMessage(msg).finally(() => {
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = '▶ 预览 Trace';
-      }, 1000);
-    });
+    chrome.runtime
+      .sendMessage(msg)
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = '▶ 预览 Trace';
+        }, 1000);
+      });
   });
   container.appendChild(btn);
 }
@@ -141,6 +151,8 @@ chrome.storage.local.get(['settings', 'autoInject']).then((res) => {
     childList: true,
     subtree: true,
   });
+}).catch(() => {
+  // 扩展上下文失效等异常时静默,避免 uncaught
 });
 
 /** 设置变更:更新规则与开关后立即重扫,使新关键词即时生效。 */
