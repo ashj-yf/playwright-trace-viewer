@@ -1,0 +1,22 @@
+{
+  "name": "allure-trace-viewer",
+  "version": "0.3.0",
+  "description": "在 Allure 报告中直接预览 Playwright trace 压缩包的 Chrome 插件",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "prepare": "node scripts/sync-vendor.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.25",
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.19.43",
+    "allure-commandline": "^2.43.0",
+    "playwright-core": "^1.61.1",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "uuid": "atv-sample-001",
+  "name": "test_145922_checklist_all_field_types",
+  "status": "passed",
+  "stage": "finished",
+  "description": "用于采集 Allure 报告附件区 DOM 的样本用例",
+  "steps": [
+    {
+      "name": "打开页面并校验字段类型",
+      "status": "passed",
+      "stage": "finished",
+      "start": 1,
+      "stop": 2,
+      "attachments": []
+    }
+  ],
+  "attachments": [
+    {
+      "name": "execution",
+      "type": "application/vnd.playwright-trace+zip",
+      "source": "trace.zip"
+    }
+  ],
+  "parameters": [],
+  "labels": [
+    { "name": "suite", "value": "f10_ui_testing_cases" },
+    { "name": "severity", "value": "normal" }
+  ],
+  "links": [],
+  "start": 1,
+  "stop": 2
+}

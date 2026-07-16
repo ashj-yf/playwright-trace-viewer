@@ -1,0 +1,113 @@
+body {
+  width: 300px;
+  font-family: system-ui, sans-serif;
+  margin: 0;
+}
+
+.container {
+  padding: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+h1 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.hint {
+  font-size: 12px;
+  color: #666;
+  margin: 0 0 12px;
+}
+
+button {
+  width: 100%;
+  padding: 8px;
+  cursor: pointer;
+}
+
+hr {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid #eee;
+}
+
+.icon-btn {
+  width: auto;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}
+.icon-btn:hover {
+  background: #eee;
+  color: #333;
+}
+.icon-btn.active {
+  color: #4a90d9;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-panel[hidden] {
+  display: none;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.field small {
+  font-size: 11px;
+  color: #999;
+}
+.field textarea {
+  width: 100%;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  padding: 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.link-btn {
+  width: auto;
+  background: none;
+  border: none;
+  color: #4a90d9;
+  font-size: 12px;
+  padding: 2px 0;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}

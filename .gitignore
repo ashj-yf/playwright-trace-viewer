@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+*.zip
+
+# 第三方产物(由 prepare 脚本从 playwright-core 同步)
+public/vendor/
+
+# 样本:生成的报告 & 大文件 trace
+samples/allure-report/
+samples/allure-results/*.zip
+
+# 日志
+*.log
+
+# 系统文件
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code 本地配置
+.claude/settings.local.json

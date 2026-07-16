@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>Allure Trace 注入测试页</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 24px; }
+      .attachments { margin: 8px 0 16px; padding: 8px; border: 1px solid #eee; }
+      .attachments a { margin-right: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Allure Trace 附件 - 注入测试页</h1>
+    <p>用于验证插件在「trace.zip」链接旁注入「预览 Trace」按钮,且不影响其他附件。</p>
+
+    <h2>用例 A(含 trace)</h2>
+    <div class="attachments">
+      <a href="trace.zip">trace.zip</a>
+      <a href="screenshot.png">screenshot.png</a>
+      <a href="video.webm">video.webm</a>
+    </div>
+
+    <h2>用例 B(trace 链接用「下载」文案)</h2>
+    <div class="attachments">
+      <a href="https://example.com/data/attachments/abc-trace.zip">下载 trace</a>
+    </div>
+
+    <h2>用例 C(无 trace)</h2>
+    <div class="attachments">
+      <a href="log.txt">log.txt</a>
+    </div>
+  </body>
+</html>

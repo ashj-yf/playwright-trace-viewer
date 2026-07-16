@@ -1,0 +1,31 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+header {
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header .meta {
+  font-size: 12px;
+  color: #666;
+}
+
+#status {
+  padding: 4px 12px;
+  font-size: 13px;
+  color: #888;
+  min-height: 20px;
+}
+
+#viewer-frame {
+  width: 100%;
+  height: calc(100vh - 64px);
+  border: none;
+}
