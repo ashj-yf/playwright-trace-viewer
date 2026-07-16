@@ -1,5 +1,5 @@
 {
-  "name": "allure-trace-viewer",
+  "name": "playwright-trace-viewer",
   "version": "0.3.0",
   "description": "在 Allure 报告中直接预览 Playwright trace 压缩包的 Chrome 插件",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Allure Trace Viewer",
+  "name": "Playwright Trace Viewer",
   "version": "0.3.0",
   "description": "在 Allure 报告中直接预览 Playwright trace 压缩包",
   "permissions": ["storage", "tabs"],
@@ -11,7 +11,7 @@
   },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "Allure Trace Viewer"
+    "default_title": "Playwright Trace Viewer"
   },
   "content_scripts": [
     {
