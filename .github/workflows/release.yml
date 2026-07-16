@@ -25,10 +25,9 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@v4
         with:
-          release-type: node
-          # Chrome 扩展版本号同时在 src/manifest.json 维护,一并更新
-          extra-files: |
-            src/manifest.json
+          # v4 的 extra-files 等配置通过 config 文件传入,不再作为 action 输入
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   build:
     needs: release-please
