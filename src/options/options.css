@@ -131,3 +131,24 @@ h1 {
 .primary-btn:hover {
   opacity: 0.9;
 }
+
+.required-mark {
+  color: #e53e3e;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.field.required textarea:invalid,
+.field.required textarea.empty {
+  border-color: #e53e3e;
+}
+
+.field .error-msg {
+  font-size: 12px;
+  color: #e53e3e;
+  display: none;
+}
+
+.field.required .error-msg.show {
+  display: block;
+}

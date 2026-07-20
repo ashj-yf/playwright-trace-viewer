@@ -26,3 +26,4 @@ samples/allure-results/*.zip
 .claude/settings.local.json
 
 docs
+.reasonix/

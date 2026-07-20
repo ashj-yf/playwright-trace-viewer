@@ -26,9 +26,9 @@ export interface MatchSettings {
   traceTypeKeywords: string[];
   /** 文件名关键词:matchMode='name' 时,附件名/下载路径含此词即认定为 trace。 */
   nameKeywords: string[];
-  /** URL 关键词:页面 URL 含此词(任一)才启用自动注入,限制只在 Allure 报告页生效。 */
+  /** URL 关键词:选填。页面 URL 含此词(任一)才启用自动注入;留空则所有页面均生效。 */
   urlKeywords: string[];
-  /** CORS 允许域名:控制 DNR 注入 CORS 头的目标范围。空=允许全部,非空=仅这些域名。 */
+  /** CORS 允许域名:必填,控制 DNR 注入 CORS 头的目标范围。非空=仅这些域名生效。 */
   corsDomains: string[];
 }
 

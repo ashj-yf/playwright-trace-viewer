@@ -53,7 +53,10 @@ function matchesAny(value: string, keywords: string[]): boolean {
 
 /** 是否应在本页启用扫描:开关开启且 URL 命中关键词。 */
 function shouldRun(): boolean {
-  return enabled && matchesAny(location.href, match.urlKeywords);
+  if (!enabled) return false;
+  // URL 关键词为空(选填未配)时所有页面均生效;非空时仅匹配的页面生效
+  if (match.urlKeywords.length === 0) return true;
+  return matchesAny(location.href, match.urlKeywords);
 }
 
 /** 从 Allure attachment-row 提取 trace 下载 URL;非 trace 返回 null。 */

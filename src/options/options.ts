@@ -12,6 +12,7 @@ const corsKw = document.getElementById('cors-kw') as HTMLTextAreaElement;
 const resetBtn = document.getElementById('reset-settings') as HTMLButtonElement;
 const saveBtn = document.getElementById('save-settings') as HTMLButtonElement;
 const hint = document.getElementById('hint') as HTMLElement;
+const errorMsg = document.querySelector('#cors-field .error-msg') as HTMLElement;
 
 let dirty = false;
 let flashTimer: number | undefined;
@@ -100,9 +101,27 @@ modeName.addEventListener('change', () => {
 traceTypeKw.addEventListener('input', markDirty);
 nameKw.addEventListener('input', markDirty);
 urlKw.addEventListener('input', markDirty);
-corsKw.addEventListener('input', markDirty);
+corsKw.addEventListener('input', () => {
+  // 用户开始输入时清除必填校验错误
+  corsKw.classList.remove('empty');
+  errorMsg.classList.remove('show');
+  markDirty();
+});
+
+function validateCorsDomains(): boolean {
+  const domains = parseKeywords(corsKw.value);
+  if (domains.length === 0) {
+    corsKw.classList.add('empty');
+    errorMsg.classList.add('show');
+    return false;
+  }
+  corsKw.classList.remove('empty');
+  errorMsg.classList.remove('show');
+  return true;
+}
 
 saveBtn.addEventListener('click', () => {
+  if (!validateCorsDomains()) return;
   const settings = readForm();
   chrome.storage.local.set({ settings }, () => {
     flashSaved();

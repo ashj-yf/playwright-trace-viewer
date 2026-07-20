@@ -38,16 +38,17 @@
         <textarea id="name-kw" rows="3" spellcheck="false" placeholder="trace"></textarea>
       </div>
 
-      <div class="field">
-        <label for="url-kw">URL 关键词</label>
-        <small>页面 URL 含此词(任一)才启用自动注入,限制只在 Allure 报告页生效,每行一个</small>
-        <textarea id="url-kw" rows="3" spellcheck="false" placeholder="allure"></textarea>
+      <div class="field required" id="cors-field">
+        <label for="cors-kw">CORS 允许域名 <span class="required-mark">*必填</span></label>
+        <small>必填项。控制 trace 跨域加载范围,填入域名(每行一个)则仅对这些域名注入 CORS 头,支持多个域名。例如填入存放 trace.zip 的域名</small>
+        <textarea id="cors-kw" rows="3" spellcheck="false" placeholder="allure.example.com" required></textarea>
+        <span class="error-msg">请至少填写一个 CORS 允许域名，否则无法跨域加载 trace 文件</span>
       </div>
 
       <div class="field">
-        <label for="cors-kw">CORS 允许域名</label>
-        <small>控制 trace 跨域加载范围。留空=允许全部域名;填入域名(每行一个)则仅对这些域名注入 CORS 头</small>
-        <textarea id="cors-kw" rows="3" spellcheck="false" placeholder="allure.example.com"></textarea>
+        <label for="url-kw">URL 关键词</label>
+        <small>选填。页面 URL 含此词(任一)才启用自动注入,限制只在特定报告页生效,每行一个。留空则所有页面均生效</small>
+        <textarea id="url-kw" rows="3" spellcheck="false" placeholder="allure"></textarea>
       </div>
 
       <div class="actions">
