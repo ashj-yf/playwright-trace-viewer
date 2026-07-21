@@ -35,10 +35,43 @@ const indexPath = join(DEST, 'index.html');
 let html = readFileSync(indexPath, 'utf8');
 if (INLINE_SCRIPT_RE.test(html)) {
   html = html.replace(INLINE_SCRIPT_RE, '');
-  writeFileSync(indexPath, html);
   console.log('[sync-vendor] 已删除 index.html 的协议检查 inline script(CSP)');
 } else {
   console.log('[sync-vendor] index.html 无需 patch(可能已处理或上游已改)');
+}
+
+// patch:移除 crossorigin 属性。
+// 扩展在 chrome-extension:// 协议下运行,官方产物默认带有 crossorigin,
+// 但 chrome-extension:// 下 crossorigin 的 CORS 校验可能导致脚本/样式加载失败,
+// 且在 iframe 内嵌场景尤其容易出问题。移除所有 crossorigin 可确保资源正常加载。
+const CROSSORIGIN_RE = /\s+crossorigin(?:="[^"]*")?/g;
+if (CROSSORIGIN_RE.test(html)) {
+  html = html.replace(CROSSORIGIN_RE, '');
+  console.log('[sync-vendor] 已移除 index.html 的 crossorigin 属性');
+}
+writeFileSync(indexPath, html);
+
+// patch:为 index.<hash>.js 的 SW 注册等待添加超时。
+// 扩展环境下 iframe 中注册 Service Worker 可能失败或永不触发 controllerchange,
+// 导致 await new Promise 永久挂起,React 无法渲染,页面空白。
+// 这里添加 3s 超时并 catch 注册异常,确保即使 SW 不可用也能正常渲染 UI。
+const indexJsMatch = html.match(/src="\.\/(index\.\w+\.js)"/);
+if (indexJsMatch) {
+  const indexJsPath = join(DEST, indexJsMatch[1]);
+  let indexJs = readFileSync(indexJsPath, 'utf8');
+  const SW_REG_OLD =
+    'navigator.serviceWorker.register("sw.bundle.js"),navigator.serviceWorker.controller||await new Promise(h=>{navigator.serviceWorker.oncontrollerchange=()=>h()})';
+  const SW_REG_NEW =
+    'navigator.serviceWorker.register("sw.bundle.js").catch(()=>{}),navigator.serviceWorker.controller||await Promise.race([new Promise(h=>{navigator.serviceWorker.oncontrollerchange=()=>h()}),new Promise(h=>setTimeout(h,3e3))])';
+  if (indexJs.includes(SW_REG_OLD)) {
+    indexJs = indexJs.replace(SW_REG_OLD, SW_REG_NEW);
+    writeFileSync(indexJsPath, indexJs);
+    console.log(`[sync-vendor] 已 patch ${indexJsMatch[1]}:SW 注册超时(3s)`);
+  } else {
+    console.log(`[sync-vendor] ${indexJsMatch[1]} SW 注册 patch 跳过(可能已处理或上游已改)`);
+  }
+} else {
+  console.log('[sync-vendor] 未找到 index.<hash>.js,跳过 SW 注册 patch');
 }
 
 // patch:移除 sw 对 chrome-extension:// 请求的短路透传。
