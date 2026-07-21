@@ -101,9 +101,9 @@ jobs:
           # 按语义版本排序取前一个 tag
           PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${TAG}$" | tail -1)
           if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ]; then
-            NOTES=$(git log --pretty=format:"* %s (%h)" --no-merges 2>/dev/null || echo "首次发布")
+            NOTES=$(git log --pretty=format:"* %s (%h)" --no-merges 2>/dev/null | grep -E "^\* (feat|fix):" || echo "首次发布")
           else
-            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"* %s (%h)" --no-merges 2>/dev/null)
+            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"* %s (%h)" --no-merges 2>/dev/null | grep -E "^\* (feat|fix):")
           fi
           echo 'body<<EOF' >> $GITHUB_OUTPUT
           echo "## What's Changed" >> $GITHUB_OUTPUT
