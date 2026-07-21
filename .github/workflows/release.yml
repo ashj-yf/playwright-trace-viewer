@@ -1,22 +1,32 @@
 name: Release
 
-# release-please 全自动发版:
-# 1. push 到 main 时,release-please 根据 Conventional Commits 自动开/更新 Release PR
-# 2. 合并 Release PR 时,release-please 自动打 tag、创建 Release、更新 CHANGELOG,
-#    并同步 package.json 与 src/manifest.json 的版本号
-# 3. Release 创建后,同 workflow 的 build job 自动构建并上传 zip 到该 Release
+# 两种发版路径,自动选择:
 #
-# 日常发版只需: 写规范提交(feat:/fix: 等) -> 合并 release-please 开的 Release PR
+# 路径 A — release-please 自动发版 (push to main):
+#   1. push 到 main 时,release-please 根据 Conventional Commits 自动开/更新 Release PR
+#   2. 合并 Release PR 时,release-please 自动打 tag、创建 Release(带 changelog)、更新版本号
+#   3. build job 自动构建并上传 zip 到该 Release
+#
+# 路径 B — 手动 tag 发版 (push tag v*):
+#   1. 本地 git tag v0.x.x && git push origin v0.x.x
+#   2. build-on-tag job 自动构建、创建 GitHub Release(带自动生成的 release notes)、上传 zip
+#
+# 日常推荐路径 A;需要紧急发版或自定义版本号时走路径 B。
 on:
   push:
     branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  # ============================================================
+  # 路径 A: release-please 检测 + 管理 Release PR
+  # ============================================================
   release-please:
+    if: startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -25,13 +35,14 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@v4
         with:
-          # v4 的 extra-files 等配置通过 config 文件传入,不再作为 action 输入
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # ============================================================
+  # 路径 A: release-please 创建 Release 后 → 构建 + 上传 zip
+  # ============================================================
   build:
     needs: release-please
-    # 仅在 release-please 实际创建了 Release 时才构建(普通 commit push 不触发)
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -40,7 +51,6 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          # 检出 release-please 刚打的 tag 对应的代码
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: 设置 Node.js
@@ -50,8 +60,6 @@ jobs:
           cache: npm
 
       - name: 安装依赖
-        # npm ci 会自动执行 prepare 脚本(sync-vendor.mjs),
-        # 从 playwright-core 同步 trace-viewer 资源到 public/vendor
         run: npm ci
 
       - name: 类型检查
@@ -61,15 +69,54 @@ jobs:
         run: npm run build
 
       - name: 打包 zip
-        # Chrome 扩展要求解压后直接是扩展根目录,因此进入 dist 打包其内容
         run: |
           cd dist
           zip -r "../playwright-trace-viewer-${{ needs.release-please.outputs.tag_name }}.zip" .
 
       - name: 上传构建产物到 Release
-        # Release 已由 release-please 创建(带 changelog body),这里只追加 zip,
-        # 不传 body / generate_release_notes 以免覆盖 release-please 生成的 changelog
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: playwright-trace-viewer-${{ needs.release-please.outputs.tag_name }}.zip
+
+  # ============================================================
+  # 路径 B: 手动推送 tag → 构建 + 创建 Release + 自动生成 release notes
+  # ============================================================
+  build-on-tag:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 构建
+        run: npm run build
+
+      - name: 打包 zip
+        run: |
+          cd dist
+          zip -r "../playwright-trace-viewer-${{ github.ref_name }}.zip" .
+
+      - name: 创建 Release 并上传 zip
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: playwright-trace-viewer-${{ github.ref_name }}.zip
+          # 自动从最近的 PR 和 commits 生成 release notes
+          generate_release_notes: true
