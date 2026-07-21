@@ -26,6 +26,8 @@ Allure 报告会把 Playwright 生成的 `trace.zip` 当作普通附件，点击
 
 ## 安装
 
+> 📖 详细的安装步骤、配置说明和常见问题请参阅 **[安装与配置手册](./docs/install-and-config.md)**。
+
 ### 方式一：从 Release 下载（推荐）
 
 1. 前往 [Releases 页面](https://github.com/ashj-yf/playwright-trace-viewer/releases)，下载最新版本的 `playwright-trace-viewer-vX.Y.Z.zip`。
@@ -45,6 +47,8 @@ npm run build
 构建产物在 `dist/`，按上面第 3、4 步加载该目录即可。
 
 ## 使用方式
+
+> 📖 更多使用细节和配置截图请参阅 **[安装与配置手册](./docs/install-and-config.md)**。
 
 ### 在 Allure 报告中预览
 
@@ -67,7 +71,7 @@ npm run build
 | MIME 类型关键词 | 识别方式为「按 MIME 类型」时生效：附件 data-type 含此词即判定为 trace | `application/vnd.playwright.trace+zip` |
 | 文件名关键词 | 识别方式为「按文件名关键词」时生效：附件名/路径含此词即判定为 trace | `trace` |
 | URL 关键词 | 页面 URL 含此词（任一）才启用自动注入，限制只在 Allure 报告页生效 | `allure` |
-| CORS 允许域名 | 控制 trace 跨域加载范围。留空=允许全部域名；填入域名（每行一个）则仅对这些域名注入 CORS 头 | 空（允许全部） |
+| CORS 允许域名 ⚠️必填 | 控制 trace 跨域加载范围。填入域名（每行一个）则仅对这些域名注入 CORS 头。**必须填写，否则无法加载远程 trace** | 空（需手动填写） |
 
 每项关键词按行分隔。识别方式为二选一：选中「按 MIME 类型」时仅按 MIME 类型关键词匹配 `data-type`；选中「按文件名关键词」时仅按附件名/路径匹配。
 
