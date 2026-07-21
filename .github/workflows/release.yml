@@ -97,14 +97,14 @@ jobs:
       - name: 生成 Release Notes
         id: notes
         run: |
-          # 获取上一个 tag(按时间倒序取第2个,即当前 tag 的前一个)
-          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
-          if [ -z "$PREV_TAG" ]; then
-            RANGE=""
+          TAG="${{ github.ref_name }}"
+          # 按语义版本排序取前一个 tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${TAG}$" | tail -1)
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ]; then
+            NOTES=$(git log --pretty=format:"* %s (%h)" --no-merges 2>/dev/null || echo "首次发布")
           else
-            RANGE="${PREV_TAG}..HEAD"
+            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"* %s (%h)" --no-merges 2>/dev/null)
           fi
-          NOTES=$(git log $RANGE --pretty=format:"* %s (%h)" --no-merges 2>/dev/null || echo "首次发布")
           echo 'body<<EOF' >> $GITHUB_OUTPUT
           echo "## What's Changed" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
@@ -131,9 +131,20 @@ jobs:
           cd dist
           zip -r "../playwright-trace-viewer-${{ github.ref_name }}.zip" .
 
-      - name: 创建 Release 并上传 zip
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: playwright-trace-viewer-${{ github.ref_name }}.zip
-          body: ${{ steps.notes.outputs.body }}
+      - name: 更新或创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          ZIP="playwright-trace-viewer-${TAG}.zip"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "release 已存在,更新 body 和 asset..."
+            gh release edit "$TAG" --notes "${{ steps.notes.outputs.body }}"
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            echo "创建新 release..."
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "${{ steps.notes.outputs.body }}" \
+              "$ZIP"
+          fi
