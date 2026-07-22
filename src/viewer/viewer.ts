@@ -2,16 +2,10 @@
  * Trace 预览页(壳)。
  *
  * 流程:
- *   1. 从 URL 参数取 traceUrl(由 content script 经 background 传入)。
- *   2. 直接把 traceUrl 作为 ?trace= 传给内嵌的官方 trace-viewer(index.html),
- *      由官方 viewer 的 SW 在线读取并解析,扩展层不下载、不缓存。
- *   3. 官方 viewer 通过其 Service Worker 渲染五视图。
- *
- * 跨域由 declarativeNetRequest 解决(见 background/dnr.ts):vendor SW fetch
- * 远程 trace URL 时,DNR 给响应注入 Access-Control-Allow-Origin,使跨域读取
- * 通过,故扩展层无需 blob 中转下载。
+ *   1. viewer.html 以扩展权限 fetch 远程 trace zip(免除 DNR/CORS 依赖)。
+ *   2. 转为 Blob,通过 postMessage 传给 iframe 内的官方 trace-viewer。
+ *   3. 官方 viewer 的 SW 仅处理本地 blob URL,无需跨域访问。
  */
-
 const metaEl = document.getElementById('meta') as HTMLElement;
 const statusEl = document.getElementById('status') as HTMLElement;
 const frame = document.getElementById('viewer-frame') as HTMLIFrameElement;
@@ -24,7 +18,7 @@ const caseName = params.get('case');
 
 if (caseName) metaEl.textContent = `用例: ${caseName}`;
 
-/** iframe 加载后,关闭官方页面残留的协议检查报错弹窗(已 patch,留作兜底)。 */
+/** iframe 加载后下载 trace 并 postMessage 传入 */
 frame.addEventListener('load', () => {
   statusEl.textContent = '';
   try {
@@ -32,14 +26,25 @@ frame.addEventListener('load', () => {
   } catch {
     // 跨域无法访问时忽略
   }
+  if (traceUrl) loadTraceIntoFrame(traceUrl);
 });
 
-if (traceUrl) {
-  statusEl.textContent = '正在打开 trace…';
-  const u = new URL(INDEX_URL);
-  u.searchParams.set('trace', traceUrl);
-  frame.src = u.toString();
-} else {
-  // 无 trace 参数(手动入口):直接显示官方 viewer 的拖拽/选择界面。
-  frame.src = INDEX_URL;
+async function loadTraceIntoFrame(url: string): Promise<void> {
+  statusEl.textContent = '正在下载 trace…';
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    frame.contentWindow?.postMessage(
+      { method: 'load', params: { trace: blob } },
+      '*',
+    );
+    statusEl.textContent = '';
+  } catch (err) {
+    statusEl.textContent = `下载失败: ${err}`;
+    console.error('[trace-viewer] 下载 trace 失败:', err);
+  }
 }
+
+// 始终先加载 viewer 壳(不传 trace 参数),加载完成后通过 postMessage 传入 trace
+frame.src = INDEX_URL;

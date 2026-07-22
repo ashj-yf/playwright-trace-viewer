@@ -51,10 +51,12 @@ if (CROSSORIGIN_RE.test(html)) {
 }
 writeFileSync(indexPath, html);
 
-// patch:为 index.<hash>.js 的 SW 注册等待添加超时。
-// 扩展环境下 iframe 中注册 Service Worker 可能失败或永不触发 controllerchange,
-// 导致 await new Promise 永久挂起,React 无法渲染,页面空白。
-// 这里添加 3s 超时并 catch 注册异常,确保即使 SW 不可用也能正常渲染 UI。
+// patch:为 index.<hash>.js 的 SW 注册添加 ready 等待 + 超时。
+// 原始代码只检查 controller 并 await oncontrollerchange,但注册后 SW 可能
+// 处于 installed/waiting 而非 activating,controller 一直为 null、
+// oncontrollerchange 不触发,后续 fetch 走网络 -> "Failed to fetch"。
+// 改为 register().then(() => ready),ready 在 SW 激活后才 resolve。
+// 超时 8s 兜底,即使 SW 不可用也能继续渲染 UI。
 const indexJsMatch = html.match(/src="\.\/(index\.\w+\.js)"/);
 if (indexJsMatch) {
   const indexJsPath = join(DEST, indexJsMatch[1]);
@@ -62,11 +64,11 @@ if (indexJsMatch) {
   const SW_REG_OLD =
     'navigator.serviceWorker.register("sw.bundle.js"),navigator.serviceWorker.controller||await new Promise(h=>{navigator.serviceWorker.oncontrollerchange=()=>h()})';
   const SW_REG_NEW =
-    'navigator.serviceWorker.register("sw.bundle.js").catch(()=>{}),navigator.serviceWorker.controller||await Promise.race([new Promise(h=>{navigator.serviceWorker.oncontrollerchange=()=>h()}),new Promise(h=>setTimeout(h,3e3))])';
+    'await Promise.race([navigator.serviceWorker.register("sw.bundle.js").then(()=>navigator.serviceWorker.ready),new Promise(h=>setTimeout(h,8e3))]).catch(()=>{})';
   if (indexJs.includes(SW_REG_OLD)) {
     indexJs = indexJs.replace(SW_REG_OLD, SW_REG_NEW);
     writeFileSync(indexJsPath, indexJs);
-    console.log(`[sync-vendor] 已 patch ${indexJsMatch[1]}:SW 注册超时(3s)`);
+    console.log(`[sync-vendor] 已 patch ${indexJsMatch[1]}:SW ready 等待(8s)`);
   } else {
     console.log(`[sync-vendor] ${indexJsMatch[1]} SW 注册 patch 跳过(可能已处理或上游已改)`);
   }
@@ -143,19 +145,40 @@ const dsFiles = existsSync(assetsDir)
 if (dsFiles.length === 1) {
   const dsPath = join(assetsDir, dsFiles[0]);
   let ds = readFileSync(dsPath, 'utf8');
+  let dsPatched = false;
+
+  // patch 1:为 network resource 补 _monotonicTime
   const DS_OLD =
     'this.resources=[...i.map(u=>u.resources)].flat().map(u=>({...u,id:`${u.pageref}-${u.startedDateTime}-${u.request.url}`}))';
   const DS_NEW =
     'this.resources=[...i.map(u=>u.resources)].flat().map(u=>({...u,id:`${u.pageref}-${u.startedDateTime}-${u.request.url}`,_monotonicTime:u._monotonicTime!=null?u._monotonicTime:(u.startedDateTime?Date.parse(u.startedDateTime)-this.wallTime+(this.startTime||0):void 0)}))';
   if (ds.includes(DS_OLD)) {
     ds = ds.replace(DS_OLD, DS_NEW);
-    writeFileSync(dsPath, ds);
+    dsPatched = true;
     console.log(`[sync-vendor] 已 patch ${dsFiles[0]}:补 network _monotonicTime`);
   } else {
     console.log('[sync-vendor] defaultSettingsView _monotonicTime patch 跳过(可能已处理或上游已改)');
   }
+
+  // patch 2:播放时 Network 列表随播放进度实时刷新。
+  // Timeline 播放时 a2 hook 内部更新 highlightedTime → percent 随之变化,
+  // 但 qE 仅根据 selectedTime(j)过滤 resources,播放时 j 不变。
+  // 改为播放时(Xt.playing)从 percent 反算当前时间点,构造 ±2s 滑动窗口,
+  // 停止时回退到 selectedTime 或显示全部,不影响 Timeline 缩放。
+  const DS_QE_OLD = 'Ss=qE(i,j)';
+  const DS_QE_NEW =
+    'Ss=qE(i,Xt.playing?{minimum:He.minimum-1e3,maximum:He.minimum+Xt.percent/100*(He.maximum-He.minimum)}:_e?{minimum:He.minimum-1e3,maximum:_e.endTime}:j)';
+  if (ds.includes(DS_QE_OLD)) {
+    ds = ds.replace(DS_QE_OLD, DS_QE_NEW);
+    dsPatched = true;
+    console.log(`[sync-vendor] 已 patch ${dsFiles[0]}:播放时 Network 实时刷新`);
+  } else {
+    console.log('[sync-vendor] qE highlightedTime patch 跳过(可能已处理或上游已改)');
+  }
+
+  if (dsPatched) writeFileSync(dsPath, ds);
 } else {
-  console.log(`[sync-vendor] defaultSettingsView 文件数异常(${dsFiles.length}),跳过 _monotonicTime patch`);
+  console.log(`[sync-vendor] defaultSettingsView 文件数异常(${dsFiles.length}),跳过 defaultSettingsView patch`);
 }
 
 writeFileSync(join(DEST, 'VERSION'), pwVersion);

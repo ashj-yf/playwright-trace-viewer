@@ -64,7 +64,8 @@ export async function syncCorsRules(corsDomains: string[]): Promise<void> {
       ],
     },
     condition: {
-      resourceTypes: [chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST],
+      // 不限制 resourceTypes:iframe 内 SW 的 fetch 可能不被归类为
+      // xmlhttprequest,仅通过 requestDomains 限定范围即可。
       requestDomains: domains,
     },
   };
