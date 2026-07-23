@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Playwright Trace Viewer",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "在 Allure 报告中直接预览 Playwright trace 压缩包",
   "permissions": [
     "storage",

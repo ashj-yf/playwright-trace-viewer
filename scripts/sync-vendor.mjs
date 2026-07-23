@@ -179,5 +179,82 @@ if (dsFiles.length === 1) {
   console.log(`[sync-vendor] defaultSettingsView 文件数异常(${dsFiles.length}),跳过 defaultSettingsView patch`);
 }
 
+// patch:urlMatch 协议白名单追加 chrome-extension:。
+// snapshot.html 的 popout 模式在扩展内打开时,location.href 为 chrome-extension://,
+// urlMatch 的 c() 只校验 http:/https: 协议,导致 new URL(r, base) 解析出
+// chrome-extension: 后 return false, iframe.src 保持 about:blank → 页面白屏。
+const umFiles = existsSync(assetsDir)
+  ? readdirSync(assetsDir).filter((f) => f.startsWith('urlMatch-') && f.endsWith('.js'))
+  : [];
+if (umFiles.length === 1) {
+  const umPath = join(assetsDir, umFiles[0]);
+  let um = readFileSync(umPath, 'utf8');
+  const UM_OLD = '["http:","https:"]';
+  const UM_NEW = '["http:","https:","chrome-extension:"]';
+  if (um.includes(UM_OLD) && !um.includes('"chrome-extension:"')) {
+    um = um.replace(UM_OLD, UM_NEW);
+    writeFileSync(umPath, um);
+    console.log(`[sync-vendor] 已 patch ${umFiles[0]}:追加 chrome-extension 协议白名单`);
+  } else {
+    console.log(`[sync-vendor] ${umFiles[0]} 协议 patch 跳过(可能已处理或上游已改)`);
+  }
+} else {
+  console.log(`[sync-vendor] urlMatch 文件数异常(${umFiles.length}),跳过 urlMatch patch`);
+}
+
+// patch:snapshot.<hash>.js SW 注册改为 ready 等待 + 超时(与 index.js 同样的问题)。
+// popout 打开 snapshot.html 后需要 SW 来 serve snapshot 内容,旧模式只检查
+// controller + oncontrollerchange,SW 处于 installed/waiting 时永远不触发,
+// 导致 fetch 失败 → 快照无法加载。
+const snFiles = existsSync(DEST)
+  ? readdirSync(DEST).filter((f) => f.startsWith('snapshot.') && f.endsWith('.js'))
+  : [];
+if (snFiles.length === 1) {
+  const snPath = join(DEST, snFiles[0]);
+  let sn = readFileSync(snPath, 'utf8');
+  const SN_SW_OLD =
+    'navigator.serviceWorker.register("sw.bundle.js"),navigator.serviceWorker.controller||await new Promise(t=>navigator.serviceWorker.oncontrollerchange=t)';
+  const SN_SW_NEW =
+    'await Promise.race([navigator.serviceWorker.register("sw.bundle.js").then(()=>navigator.serviceWorker.ready),new Promise(t=>setTimeout(t,8e3))]).catch(()=>{})';
+  if (sn.includes(SN_SW_OLD)) {
+    sn = sn.replace(SN_SW_OLD, SN_SW_NEW);
+    writeFileSync(snPath, sn);
+    console.log(`[sync-vendor] 已 patch ${snFiles[0]}:SW ready 等待(8s)`);
+  } else {
+    console.log(`[sync-vendor] ${snFiles[0]} SW 注册 patch 跳过(可能已处理或上游已改)`);
+  }
+} else {
+  console.log(`[sync-vendor] snapshot js 文件数异常(${snFiles.length}),跳过 snapshot SW patch`);
+}
+
+// patch:snapshot.html 移除 crossorigin 属性。
+// 与 index.html 同理,chrome-extension:// 协议下 crossorigin 的 CORS 校验
+// 可能导致 <script type="module"> 和 <link rel="modulepreload"> 加载失败。
+const snHtmlPath = join(DEST, 'snapshot.html');
+if (existsSync(snHtmlPath)) {
+  let snHtml = readFileSync(snHtmlPath, 'utf8');
+  if (CROSSORIGIN_RE.test(snHtml)) {
+    snHtml = snHtml.replace(CROSSORIGIN_RE, '');
+    console.log('[sync-vendor] 已移除 snapshot.html 的 crossorigin 属性');
+  } else {
+    console.log('[sync-vendor] snapshot.html 无需 patch crossorigin(可能已处理)');
+  }
+  // patch:移除 iframe sandbox 属性。
+  // snapshot.html 的 iframe 官方设了 sandbox="allow-same-origin allow-scripts",
+  // 这种组合等于没有 sandbox,在 chrome-extension:// 下会触发 Chrome 安全警告:
+  // "An iframe which has both allow-scripts and allow-same-origin for its
+  //  sandbox attribute can escape its sandboxing."
+  // 同时 snapshot 内容来自 Playwright 自身的渲染器,不含用户页面原始脚本,
+  // 在扩展页面内不需要 sandbox。移除后功能不变且消除警告。
+  const SN_SANDBOX_RE = /\s+sandbox="allow-same-origin allow-scripts"/;
+  if (SN_SANDBOX_RE.test(snHtml)) {
+    snHtml = snHtml.replace(SN_SANDBOX_RE, '');
+    console.log('[sync-vendor] 已移除 snapshot.html 的 sandbox 属性');
+  }
+  writeFileSync(snHtmlPath, snHtml);
+} else {
+  console.log('[sync-vendor] snapshot.html 不存在,跳过 patch');
+}
+
 writeFileSync(join(DEST, 'VERSION'), pwVersion);
 console.log(`[sync-vendor] 完成 -> ${DEST}`);
