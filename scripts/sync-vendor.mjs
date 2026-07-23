@@ -160,14 +160,12 @@ if (dsFiles.length === 1) {
     console.log('[sync-vendor] defaultSettingsView _monotonicTime patch 跳过(可能已处理或上游已改)');
   }
 
-  // patch 2:播放时 Network 列表随播放进度实时刷新。
-  // Timeline 播放时 a2 hook 内部更新 highlightedTime → percent 随之变化,
-  // 但 qE 仅根据 selectedTime(j)过滤 resources,播放时 j 不变。
-  // 改为播放时(Xt.playing)从 percent 反算当前时间点,构造 ±2s 滑动窗口,
-  // 停止时回退到 selectedTime 或显示全部,不影响 Timeline 缩放。
+  // patch 2:播放/选中 action 时 Network 列表增量联动。
+  // 优先级:selectedTime(拖选时间轴) > playing(播放) > selectedAction(点击)
+  // 拖选时精确筛选,播放/点击时从起点累积到当前位置/action 结束。
   const DS_QE_OLD = 'Ss=qE(i,j)';
   const DS_QE_NEW =
-    'Ss=qE(i,Xt.playing?{minimum:He.minimum-1e3,maximum:He.minimum+Xt.percent/100*(He.maximum-He.minimum)}:_e?{minimum:He.minimum-1e3,maximum:_e.endTime}:j)';
+    'Ss=qE(i,j?j:Xt.playing?{minimum:He.minimum-1e3,maximum:He.minimum+Xt.percent/100*(He.maximum-He.minimum)}:_e?{minimum:He.minimum-1e3,maximum:_e.endTime}:j)';
   if (ds.includes(DS_QE_OLD)) {
     ds = ds.replace(DS_QE_OLD, DS_QE_NEW);
     dsPatched = true;
