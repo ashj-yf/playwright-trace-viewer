@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Playwright Trace Viewer",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "在 Allure 报告中直接预览 Playwright trace 压缩包",
   "permissions": [
     "storage",
@@ -16,9 +16,19 @@
     "service_worker": "src/background/sw.ts",
     "type": "module"
   },
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "Playwright Trace Viewer"
+    "default_title": "Playwright Trace Viewer",
+    "default_icon": {
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
   },
   "options_page": "src/options/options.html",
   "content_scripts": [

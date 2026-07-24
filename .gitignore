@@ -27,3 +27,6 @@ samples/allure-results/*.zip
 
 .reasonix/
 reasonix.toml
+
+# Playwright MCP 运行时
+.playwright-mcp/
