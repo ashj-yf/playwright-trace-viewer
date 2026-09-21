@@ -91,7 +91,27 @@ npm run build      # 构建生产产物到 dist/
 npm run typecheck  # TypeScript 类型检查(不产出来)
 ```
 
-> `public/vendor/trace-viewer/` 是从 `playwright-core` 同步的官方产物，已被 `.gitignore` 忽略，由 `scripts/sync-vendor.mjs` 在 `prepare` 阶段自动生成。升级 Playwright 版本只需改 `package.json` 中的 `playwright-core` 依赖并重新 `npm install`。
+> `public/vendor/trace-viewer/` 是从 `playwright-core` 同步的官方产物，已被 `.gitignore` 忽略，由 `scripts/sync-vendor.mjs` 在 `prepare` 阶段自动生成。
+>
+> **升级 Playwright 版本**：改 `package.json` 中的 `playwright-core` 依赖后执行 `npm install`，再运行
+> `node scripts/sync-vendor.mjs` 重新同步并打补丁，最后 `npm run build`。
+> 只跑 `npm install` 而不重新同步是**不安全**的：`npm run build` 不会重新同步 vendor，
+> 会打入旧版 viewer。因此 `prebuild` 会执行 `npm run check-vendor`，
+> 一旦 `public/vendor` 与已安装的 `playwright-core` 版本不一致就直接报错中止，
+> 避免"构建成功但 viewer 版本落后"的静默退化。
+>
+> 同步脚本对每个补丁都做锚点校验：官方产物一旦结构变化导致补丁失配，
+> 脚本会以非零码退出并列出未命中的补丁，而不是静默跳过。
+
+### 验证
+
+```bash
+npm run verify:viewer      # 用真实 trace 样本验证 viewer 能加载(v9/v6 + 版本过新对照)
+npm run verify:extension   # 在真实 Chrome 里加载扩展,走完整链路(注入 → 预览 → 快照 CSP)
+```
+
+`verify:extension` 需要 Chrome for Testing（品牌版 Chrome 自 137 起忽略 `--load-extension`），
+默认取本机 `~/Library/Caches/ms-playwright/chromium-1217/`，可用 `CFT_EXE` 环境变量覆盖。
 
 ### 项目结构
 
@@ -117,7 +137,10 @@ src/
 public/
 └── vendor/trace-viewer/       # 官方 trace-viewer 产物(prepare 时同步,不入库)
 scripts/
-└── sync-vendor.mjs            # 同步 + patch 官方产物(移除 MV3 不兼容的 inline script)
+├── sync-vendor.mjs            # 同步 + patch 官方产物(锚点失配即报错)
+├── check-vendor.mjs           # 构建前置检查:vendor 版本须与 playwright-core 一致
+├── verify-viewer.mjs          # 用真实 trace 验证 viewer 能加载(含版本过新对照)
+└── verify-extension.mjs       # 在真实 Chrome 中加载扩展跑端到端链路
 ```
 
 ### 数据流

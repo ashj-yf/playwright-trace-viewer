@@ -20,6 +20,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // chrome-extension:// 页面上 modulepreload 完全无效。Chrome 会报:
+    //   "A preload for '...' is found, but is not used because it is a
+    //    cross-world extension resource mismatch."
+    // 扩展资源走独立的 URL loader,不参与渲染进程的 preload cache,
+    // 预加载的响应一律被丢弃、真实 import 再取一次 —— 纯粹的重复读取 + 控制台噪音。
+    // 关掉后同时省掉 modulepreload-polyfill chunk(Chrome 原生支持,polyfill 本就空跑)。
+    modulePreload: false,
     rollupOptions: {
       input: { viewer: viewerHtml },
     },

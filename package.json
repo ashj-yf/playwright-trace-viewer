@@ -8,16 +8,19 @@
     "prepare": "node scripts/sync-vendor.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "dev": "vite",
-    "prebuild": "npm run icons",
+    "check-vendor": "node scripts/check-vendor.mjs",
+    "prebuild": "npm run icons && npm run check-vendor",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:viewer": "node scripts/verify-viewer.mjs",
+    "verify:extension": "node scripts/verify-extension.mjs"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.25",
     "@types/chrome": "^0.0.268",
     "@types/node": "^20.19.43",
     "allure-commandline": "^2.43.0",
-    "playwright-core": "^1.61.1",
+    "playwright-core": "^1.63.0",
     "sharp": "^0.35.3",
     "typescript": "^5.4.0",
     "vite": "^5.4.0"
