@@ -66,12 +66,23 @@ function matchesAny(value: string, keywords: string[]): boolean {
   return keywords.some((kw) => kw.length > 0 && lower.includes(kw.toLowerCase()));
 }
 
-/** 是否应在本页启用扫描:开关开启且 URL 命中关键词。 */
+/**
+ * 页面是否启用注入:按用户判定方式,「URL 关键词」与「CORS 域名」两个参数
+ * 合并为子串关键词列表,对完整页面 URL 匹配,任一命中即注入(全量注入);
+ * 两者皆未配置时全页面生效。CORS 域名由打开预览时自动收集(见 background),
+ * 覆盖 URL 关键词未覆盖的报告源(如带查询参数的过滤视图)。
+ */
+export function matchesPageUrl(href: string, match: MatchSettings): boolean {
+  const keywords = [...match.urlKeywords, ...match.corsDomains]
+    .map((kw) => kw.trim())
+    .filter((kw) => kw.length > 0);
+  return keywords.length === 0 || matchesAny(href, keywords);
+}
+
+/** 是否应在本页启用扫描:开关开启且页面命中匹配规则。 */
 function shouldRun(): boolean {
   if (!enabled) return false;
-  // URL 关键词为空(选填未配)时所有页面均生效;非空时仅匹配的页面生效
-  if (match.urlKeywords.length === 0) return true;
-  return matchesAny(location.href, match.urlKeywords);
+  return matchesPageUrl(location.href, match);
 }
 
 /** 从 Allure attachment-row 提取 trace 下载 URL;非 trace 返回 null。 */

@@ -57,12 +57,19 @@ function matchesAny(value: string, keywords: string[]): boolean {
 
 /**
  * 从 location.hash 提取 Allure 3 用例路由的 testId。
- * 用例页 hash 形如 #<32位hex>;非用例页(#、#/xxx、#tree=…、#<testId>-setup 阶段行)
- * 返回 null。
+ * 用例页 hash 为 #<32位hex> 或带路由前缀(#categories/<32位hex> 等)。
+ * 非用例页(#、#/categories、#tree=abc 等)返回 null。
  */
 export function extractAllure3TestId(hash: string): string | null {
-  const m = /^#([0-9a-fA-F]{8,})$/.exec(hash);
-  return m ? m[1] : null;
+  // 用例路由形态:#<testId>(树视图)或 #categories/<testId> 等带路由前缀
+  // (?status=failed 过滤入口经 SPA 初始化即变为 categories 路由,实测),
+  // 亦可能带查询/路径后缀。取路径中首个纯十六进制段(8+ 位):固定词段
+  // (categories/overview 等)均非纯 hex,不会误提取;-setup 阶段行同理。
+  const path = hash.replace(/^#/, '').split('?')[0];
+  for (const seg of path.split('/')) {
+    if (/^[0-9a-fA-F]{8,}$/.test(seg)) return seg;
+  }
+  return null;
 }
 
 /** 从 Allure 3 用例 JSON 中按匹配规则筛出 trace 附件。 */
