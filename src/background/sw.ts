@@ -1,4 +1,4 @@
-import type { OpenTraceViewerMessage } from '../types/shared';
+import type { OpenTraceViewerMessage, TraceUploadDoneMessage } from '../types/shared';
 import type { Settings } from '../types/shared';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../types/shared';
 import { syncCorsRules } from './dnr';
@@ -8,7 +8,10 @@ import { syncCorsRules } from './dnr';
  */
 function extractHostname(url: string): string | null {
   try {
-    return new URL(url).hostname;
+    const u = new URL(url);
+    // pw-upload:// 等 SW 内存 URL 无跨域问题,不应进 CORS 白名单
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return u.hostname;
   } catch {
     return null;
   }
@@ -32,31 +35,44 @@ async function ensureCorsDomain(hostname: string): Promise<void> {
  * 收到 OPEN_TRACE_VIEWER 时,自动将 trace URL 域名加入 CORS 白名单,
  * 再打开预览页。
  */
-chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if ((message as OpenTraceViewerMessage).type === 'OPEN_TRACE_VIEWER') {
     const msg = message as OpenTraceViewerMessage;
-    // 自动提取域名并添加到 CORS 白名单,确保 vendor SW 能跨域 fetch trace
+    // 自动提取域名并添加到 CORS 白名单,确保 vendor SW 能跨域 fetch trace。
+    // pending 态下 trace 尚未上传,CORS 规则由直连回退路径兜底,不阻塞开 tab。
     const hostname = extractHostname(msg.traceUrl);
-    if (hostname) {
-      void ensureCorsDomain(hostname).then(() => {
-        const params = new URLSearchParams({ trace: msg.traceUrl });
-        if (msg.caseName) params.set('case', msg.caseName);
-        if (msg.reportUrl) params.set('from', msg.reportUrl);
-        const viewerUrl = chrome.runtime.getURL(
-          `src/viewer/viewer.html?${params.toString()}`,
-        );
-        chrome.tabs.create({ url: viewerUrl });
-      });
-    } else {
-      // URL 解析失败时降级:直接打开(可能失败,但不会阻塞)
-      const params = new URLSearchParams({ trace: msg.traceUrl });
+    const corsReady = hostname ? ensureCorsDomain(hostname).catch(() => {}) : Promise.resolve();
+
+    const buildViewerUrl = (traceParam?: string): string => {
+      const params = new URLSearchParams();
+      if (traceParam) params.set('trace', traceParam);
+      else if (msg.pendingUpload) params.set('pending', '1');
       if (msg.caseName) params.set('case', msg.caseName);
       if (msg.reportUrl) params.set('from', msg.reportUrl);
-      const viewerUrl = chrome.runtime.getURL(
-        `src/viewer/viewer.html?${params.toString()}`,
+      return chrome.runtime.getURL(`src/viewer/viewer.html?${params.toString()}`);
+    };
+
+    void corsReady.then(() => {
+      // pendingUpload:立即开「提取中」占位 tab 并回传 tabId,上传完成后
+      // 由 TRACE_UPLOAD_DONE 重定向;否则直接开带 trace 的 tab(现行为)。
+      chrome.tabs.create(
+        { url: buildViewerUrl(msg.pendingUpload ? undefined : msg.traceUrl) },
+        (tab) => sendResponse({ viewerTabId: tab?.id ?? null }),
       );
-      chrome.tabs.create({ url: viewerUrl });
-    }
+    });
+    return true; // 异步 sendResponse
+  }
+  if ((message as TraceUploadDoneMessage).type === 'TRACE_UPLOAD_DONE') {
+    const msg = message as TraceUploadDoneMessage;
+    const params = new URLSearchParams({ trace: msg.traceUrl });
+    if (msg.caseName) params.set('case', msg.caseName);
+    if (msg.reportUrl) params.set('from', msg.reportUrl);
+    // tab 可能已被用户关闭,失败静默
+    void chrome.tabs
+      .update(msg.viewerTabId, {
+        url: chrome.runtime.getURL(`src/viewer/viewer.html?${params.toString()}`),
+      })
+      .catch(() => {});
   }
   return false;
 });

@@ -19,8 +19,12 @@ const caseName = params.get('case');
 
 if (caseName) metaEl.textContent = `用例: ${caseName}`;
 
+// ──── 提取中占位: pending 态由 background 经 TRACE_UPLOAD_DONE 重定向本页 ────
+if (!traceUrl && params.get('pending') === '1') {
+  document.body.classList.add('loading');
+  statusEl.textContent = '正在从报告页提取 Trace…';
 // ──── 手动模式: 无 trace URL，直接渲染 ────
-if (!traceUrl) {
+} else if (!traceUrl) {
   frame.src = INDEX_URL;
 } else {
   // ──── 注入模式: 把 trace URL 直接传给 vendor iframe ────

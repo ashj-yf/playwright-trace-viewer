@@ -1,6 +1,6 @@
 {
   "name": "playwright-trace-viewer",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "在 Allure 报告中直接预览 Playwright trace 压缩包的 Chrome 插件",
   "type": "module",
   "private": true,
@@ -13,7 +13,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "verify:viewer": "node scripts/verify-viewer.mjs",
-    "verify:extension": "node scripts/verify-extension.mjs"
+    "verify:extension": "node scripts/verify-extension.mjs",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.25",
@@ -23,6 +24,8 @@
     "playwright-core": "^1.63.0",
     "sharp": "^0.35.3",
     "typescript": "^5.4.0",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^2.1.9",
+    "jsdom": "^30.1.2"
   }
 }

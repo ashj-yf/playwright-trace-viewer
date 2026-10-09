@@ -11,9 +11,25 @@ export interface OpenTraceViewerMessage {
   caseName?: string;
   /** 来源 Allure 报告页 URL,用于回溯。 */
   reportUrl?: string;
+  /**
+   * true 时立即打开预览 tab(不带 trace 参数的 pending 态),由调用方
+   * 异步上传 trace 后经 TRACE_UPLOAD_DONE 重定向该 tab,避免点击后干等。
+   */
+  pendingUpload?: boolean;
 }
 
-export type RuntimeMessage = OpenTraceViewerMessage;
+/** content script -> background: trace 上传完成,重定向 pending 预览 tab 加载。 */
+export interface TraceUploadDoneMessage {
+  type: 'TRACE_UPLOAD_DONE';
+  /** OPEN_TRACE_VIEWER 响应返回的预览 tab id。 */
+  viewerTabId: number;
+  /** 实际可加载的 trace URL(pw-upload:// 内存地址,或上传失败时的原始直连 URL)。 */
+  traceUrl: string;
+  caseName?: string;
+  reportUrl?: string;
+}
+
+export type RuntimeMessage = OpenTraceViewerMessage | TraceUploadDoneMessage;
 
 /** trace 附件识别方式(二选一)。 */
 export type MatchMode = 'mime' | 'name';

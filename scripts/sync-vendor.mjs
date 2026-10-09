@@ -208,6 +208,30 @@ patch({
   replace: swRegisterReplace,
 });
 
+// patch:拖入/粘贴/选择文件改为 PUT 上传到 SW,不在 document 里建 blob URL。
+// 官方回调 URL.createObjectURL(file) 后由 SW fetch 该 blob —— SW 读不到
+// document 的 blob URL,必现 "Could not load trace from blob:…"。改为 async:
+// 先 PUT 文件到 /upload 拿回 SW 内创建的 blob URL,再照常 pushState/加载。
+// postMessage 加载路径同样汇聚到这个回调,自动受益。
+patch({
+  file: indexJsName,
+  label: `${indexJsName} 文件加载改为 PUT 上传(SW 可读 blob)`,
+  find:
+    /(\w+)=(\w+)\.useCallback\((\w+)=>\{let (\w+)=new URL\(window\.location\.href\);if\(!\3\.length\)return;let (\w+)=\3\.item\(0\),(\w+)=URL\.createObjectURL\(\5\);\4\.searchParams\.append\(`trace`,\6\);let (\w+)=\4\.toString\(\);window\.history\.pushState\(\{\},``,\7\),(\w+)\(\6\),(\w+)\(\5\.name\),(\w+)\(!1\),(\w+)\(null\)\},\[\]\)/,
+  replace: (_m, O, f, e, t, n, _r, _i, a, p, x, C) =>
+    O + '=' + f + '.useCallback(async ' + e + '=>{' +
+    'if(!' + e + '.length)return;' +
+    'let ' + n + '=' + e + '.item(0),PW_R;' +
+    'try{var PW_U=await fetch(`upload`,{method:`PUT`,body:' + n + '}),PW_J=await PW_U.json();' +
+    'if(!PW_U.ok){' + C + '(PW_J.error||"upload failed");return;}' +
+    'PW_R=PW_J.url;}catch(PW_E){' + C + '(String((PW_E&&PW_E.message)||PW_E));return;}' +
+    'let ' + t + '=new URL(window.location.href);' +
+    t + '.searchParams.append(`trace`,PW_R);' +
+    'window.history.pushState({},``,' + t + '.toString()),' +
+    a + '(PW_R),' + p + '(' + n + '.name),' + x + '(!1),' + C + '(null);' +
+    '},[]);',
+});
+
 // ───────────────────── Service Worker 路由 ─────────────────────
 
 const swSrc = files.get(swFile);
@@ -272,6 +296,54 @@ patch({
   label: 'sw.bundle.js 新增 /snapshot/ 兜底与 /snapshot-script/ 路由',
   find: /if\((\w+)===(["`])\/ping\2\)return new Response\(null,\{status:200\}\);/,
   replace: (m) => m + earlyRoutes,
+});
+
+// patch:/upload 路由:页面把拖入的 zip PUT 给 SW。
+//
+// 为什么需要:拖入/粘贴/选择文件时,官方前端在 document 里
+// URL.createObjectURL(file),再让本 SW fetch 该 blob —— Chromium 中
+// service worker 无法解析由 document 创建的 blob URL(独立的 blob URL
+// store),且 SW 自身也不支持 URL.createObjectURL(调用即 TypeError)。
+// 因此 SW 把上传字节直接存入内存 Map(self.__pwUploads),key 为合成的
+// pw-upload:// URL(纯字符串,不经过 blob 注册);TraceLoader 的 zip
+// backend 见该 key 时用 zip.js 的 BlobReader 直接读 Blob(见下个补丁)。
+// viewer 页面每 10s fetch /ping 保活,SW 在 viewer 开着期间不终止,Map 不过期。
+const uploadRoute =
+  `if(${swPathVar}==="/upload"){` +
+  `var PW_B;try{PW_B=await ${swReqVar}.blob();}` +
+  `catch(PW_E){return new Response(JSON.stringify({error:"upload-body: "+(PW_E&&PW_E.message)}),` +
+  `{status:500,headers:{"Content-Type":"application/json"}});}` +
+  `var PW_K="pw-upload://"+crypto.randomUUID();` +
+  `(self.__pwUploads=self.__pwUploads||new Map()).set(PW_K,PW_B);` +
+  `return new Response(JSON.stringify({url:PW_K}),` +
+  `{status:200,headers:{"Content-Type":"application/json"}});}`;
+
+patch({
+  file: swFile,
+  label: 'sw.bundle.js 新增 /upload 路由(暂存 zip Blob)',
+  find: /if\((\w+)===(["`])\/ping\2\)return new Response\(null,\{status:200\}\);/,
+  replace: (m) => m + uploadRoute,
+});
+
+// patch:URL zip backend 对上传 Blob 用 BlobReader,不再依赖 fetch blob URL。
+// 官方构造固定 new ZipReader(new HttpReader(url));上传场景的 url 是
+// pw-upload:// 合成串,HttpReader fetch 不到任何东西。改为先查
+// self.__pwUploads:命中则 zip.js 的 BlobReader 直接吃内存 Blob,
+// 未命中(真实 http(s) trace URL)保持 HttpReader 原样。
+patch({
+  file: swFile,
+  label: 'sw.bundle.js zip backend 支持上传 Blob(BlobReader)',
+  find:
+    /constructor\((\w+),(\w+)\)\{(\w+)\.configure\(\{baseURL:self\.location\.href\}\),this\._zipReader=new \3\.ZipReader\(new \3\.HttpReader\(this\._resolveTraceURI\(\1\),\{mode:`cors`,preventHeadRequest:!0\}\),\{useWebWorkers:!1\}\)/,
+  replace: (_m, argVar, progVar, zipVar) =>
+    `constructor(${argVar},${progVar}){` +
+    `var PW_URL=this._resolveTraceURI(${argVar}),` +
+    `PW_B=self.__pwUploads&&self.__pwUploads.get(PW_URL);` +
+    `${zipVar}.configure({baseURL:self.location.href}),` +
+    `this._zipReader=new ${zipVar}.ZipReader(` +
+    `PW_B?new ${zipVar}.BlobReader(PW_B):` +
+    `new ${zipVar}.HttpReader(PW_URL,{mode:'cors',preventHeadRequest:true}),` +
+    `{useWebWorkers:false})`,
 });
 
 // patch:外部化 snapshot 页面的 inline script,绕过 MV3 extension CSP(禁止 inline)。
@@ -408,12 +480,75 @@ for (const name of [indexHtml, uiModeHtml, snapshotHtml]) {
   });
 }
 
+// ──────────────────── upload 桥页面 ────────────────────
+
+// 生成 upload.html / upload.js:报告页 content script 与 vendor SW 之间的上传桥。
+// 认证型报告源(Jenkins 等)的 trace zip 需要登录 cookie,而扩展侧(vendor SW /
+// viewer 页)对报告源的跨站 fetch 因 SameSite=Lax 无法携带 cookie,必得 403。
+// 链路:content script 在报告页同源 fetch 出 Blob → postMessage 给本 iframe
+// (受 vendor SW 控制,activate 已有 clients.claim 会立即接管)→ 本页把 Blob
+// PUT 到 /upload 暂存进 SW 内存(__pwUploads)→ 返回 pw-upload:// URL。
+// 注意:必须是外部脚本,扩展 CSP 禁止 inline script。
+files.set(
+  'upload.html',
+  [
+    '<!doctype html>',
+    '<!-- atv: trace 上传桥,content script 经 postMessage 投喂 Blob,见 upload.js -->',
+    '<script src="./upload.js"></script>',
+    '',
+  ].join('\n'),
+);
+files.set(
+  'upload.js',
+  [
+    '// Playwright Trace Viewer 扩展 - trace 上传桥(报告页 content script <-> vendor SW)。',
+    '(function () {',
+    '  var ready = false;',
+    '  function post(msg) { parent.postMessage(msg, "*"); }',
+    '  (async function () {',
+    '    try { await navigator.serviceWorker.register("./sw.bundle.js"); } catch (e) {}',
+    '    var sw = navigator.serviceWorker;',
+    '    var deadline = Date.now() + 8000;',
+    '    while (!sw.controller && Date.now() < deadline) {',
+    '      await new Promise(function (r) { setTimeout(r, 100); });',
+    '    }',
+    '    ready = !!sw.controller;',
+    '    post(ready ? { type: "atv-sw-ready" } : { type: "atv-sw-timeout" });',
+    '  })();',
+    '  window.addEventListener("message", function (ev) {',
+    '    var d = ev.data;',
+    '    if (!d || d.type !== "atv-upload" || !d.blob) return;',
+    '    if (!ready || !navigator.serviceWorker.controller) {',
+    '      post({ type: "atv-upload-result", ok: false, error: "sw-not-controlled" });',
+    '      return;',
+    '    }',
+    '    fetch("upload", { method: "PUT", body: d.blob })',
+    '      .then(function (res) {',
+    '        return res.json().then(function (j) {',
+    '          if (!res.ok) throw new Error((j && j.error) || "HTTP " + res.status);',
+    '          post({ type: "atv-upload-result", ok: true, url: j.url });',
+    '        });',
+    '      })',
+    '      .catch(function (e) {',
+    '        post({ type: "atv-upload-result", ok: false, error: String((e && e.message) || e) });',
+    '      });',
+    '  });',
+    '})();',
+    '',
+  ].join('\n'),
+);
+
 // ──────────────────── 后置校验 ────────────────────
 
 // 替换逻辑本身写错时,上面的 patch() 仍会报告成功(文本确实变了),
 // 因此对关键产物再做一次内容断言。
 assertContains(swFile, 'sw: snapshot-script 缓存已注入', '__pwSS');
 assertContains(swFile, 'sw: /snapshot-script/ 路由已注入', '/snapshot-script/');
+assertContains(swFile, 'sw: /upload/ 路由已注入', '"/upload"');
+assertContains(swFile, 'sw: 上传 Blob 注册表已注入', '__pwUploads');
+assertContains(swFile, 'sw: zip BlobReader 已注入', 'BlobReader');
+assertContains(indexJsName, 'index: 文件 PUT 上传已注入', 'method:`PUT`');
+assertContains('upload.js', 'upload: 上传桥已生成', 'atv-upload-result');
 assertContains(swFile, 'sw: chrome-extension 短路已移除', 'startsWith("/snapshot/")');
 if (/chrome-extension:\/\/["`]\)\)return fetch\(/.test(files.get(swFile))) {
   results.push({
