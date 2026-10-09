@@ -10,7 +10,7 @@
  *     Access-Control-Allow-Credentials 以防止与 * 冲突
  *   - 空(兜底):不注入,避免干扰其他网站
  *
- * 另有一条恒定的字体规则:id=2,对所有域名的 font/* 响应注入 ACAO,
+ * 另有一条恒定的字体规则:id=2,对本扩展页面发起的跨域响应注入 ACAO,
  * 仅限本扩展页面(initiatorDomains)发起的请求 —— snapshot 快照里被测
  * 系统的图标字体(如 remixicon)是跨域 @font-face 加载,源站普遍不带
  * CORS 头,浏览器拒绝将响应交给字体引擎,控制台报
@@ -49,8 +49,10 @@ export async function syncCorsRules(corsDomains: string[]): Promise<void> {
       ],
     },
     condition: {
-      resourceTypes: [chrome.declarativeNetRequest.ResourceType.FONT],
-      // 仅本扩展页面(viewer/snapshot)发起的字体请求,不影响任何网站自身行为
+      // 不限定 resourceTypes:vendor SW 控制的 snapshot 页里,字体等子资源
+      // 请求经 SW fetch handler 透传(fetch() 再发),Chromium 在 DNR 中将其
+      // 归类为 xmlhttprequest/other 而非 font,限定 'font' 会失配(实测)。
+      // 仅本扩展页面(viewer/snapshot)发起的请求,不影响任何网站自身行为。
       initiatorDomains: [chrome.runtime.id],
     },
   };

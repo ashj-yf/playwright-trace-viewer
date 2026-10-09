@@ -24,8 +24,9 @@ describe('syncCorsRules 字体跨域规则', () => {
     expect(call.addRules).toHaveLength(1);
     const fontRule = call.addRules[0] as Record<string, any>;
     expect(fontRule.id).toBe(2);
-    expect(fontRule.condition.resourceTypes).toEqual(['font']);
+    // 不限定 resourceTypes(SW 透传类型漂移),仅以 initiator 锁定扩展页面
     expect(fontRule.condition.initiatorDomains).toEqual(['ext-id']);
+    expect(fontRule.condition.resourceTypes).toBeUndefined();
     const headers = fontRule.action.responseHeaders as { header: string; value?: string }[];
     expect(headers.find((h) => h.header === 'Access-Control-Allow-Origin')?.value).toBe('*');
   });
