@@ -35,7 +35,7 @@ async function ensureCorsDomain(hostname: string): Promise<void> {
  * 收到 OPEN_TRACE_VIEWER 时,自动将 trace URL 域名加入 CORS 白名单,
  * 再打开预览页。
  */
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if ((message as OpenTraceViewerMessage).type === 'OPEN_TRACE_VIEWER') {
     const msg = message as OpenTraceViewerMessage;
     // 自动提取域名并添加到 CORS 白名单,确保 vendor SW 能跨域 fetch trace。
@@ -52,12 +52,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return chrome.runtime.getURL(`src/viewer/viewer.html?${params.toString()}`);
     };
 
-    void corsReady.then(() => {
+    void corsReady.then(async () => {
       // pendingUpload:立即开「提取中」占位 tab 并回传 tabId,上传完成后
       // 由 TRACE_UPLOAD_DONE 重定向;否则直接开带 trace 的 tab(现行为)。
-      chrome.tabs.create(
-        { url: buildViewerUrl(msg.pendingUpload ? undefined : msg.traceUrl) },
-        (tab) => sendResponse({ viewerTabId: tab?.id ?? null }),
+      const createOpts: chrome.tabs.CreateProperties = {
+        url: buildViewerUrl(msg.pendingUpload ? undefined : msg.traceUrl),
+      };
+      // 新预览 tab 紧贴报告 tab 之后依次插入:统计父 tab 右侧连续紧邻的
+      // 既有预览 tab 数 k,插入到 parentIndex+k+1;序列断开(被挪走/关闭)
+      // 时自然回到父 tab 紧右侧。popup 等无 tab 上下文的来源走默认位置。
+      const parentTab = sender.tab;
+      if (parentTab && typeof parentTab.index === 'number') {
+        const pattern = chrome.runtime.getURL('src/viewer/viewer.html') + '*';
+        const viewers = await chrome.tabs
+          .query({ windowId: parentTab.windowId, url: pattern })
+          .catch(() => [] as chrome.tabs.Tab[]);
+        let k = 0;
+        while (viewers.some((t) => t.index === parentTab.index + k + 1)) k++;
+        createOpts.index = parentTab.index + k + 1;
+      }
+      chrome.tabs.create(createOpts, (tab) =>
+        sendResponse({ viewerTabId: tab?.id ?? null }),
       );
     });
     return true; // 异步 sendResponse

@@ -17,6 +17,7 @@ vi.stubGlobal('chrome', {
     onChanged: { addListener: vi.fn() },
   },
   tabs: {
+    query: vi.fn(async () => [] as { index: number }[]),
     create: vi.fn((opts: { url: string }, cb: (tab: { id: number }) => void) => {
       const tab = { url: opts.url, id: ++tabSeq };
       createdTabs.push(tab);
@@ -35,10 +36,10 @@ vi.stubGlobal('chrome', {
 
 await import('../src/background/sw');
 
-const send = (msg: unknown) =>
+const send = (msg: unknown, sender: unknown = {}) =>
   new Promise<unknown>((resolve) => {
     // listener return false 表示无异步响应,直接 resolve
-    const keep = messageListener!(msg, {}, resolve);
+    const keep = messageListener!(msg, sender, resolve);
     if (!keep) resolve(undefined);
   });
 
@@ -91,5 +92,44 @@ describe('TRACE_UPLOAD_DONE', () => {
     });
     expect(updatedTabs[0].url).toContain(encodeURIComponent('pw-upload://u1'));
     expect(updatedTabs[0].url).not.toContain('pending');
+  });
+});
+
+
+describe('预览 tab 位置(紧贴报告 tab 之后依次插入)', () => {
+  it('无既有预览 tab -> 插在父 tab 紧右侧', async () => {
+    vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
+    await send({ type: 'OPEN_TRACE_VIEWER', traceUrl: 'https://r.example.com/a.zip' }, { tab: { index: 3, windowId: 1 } });
+    expect(chrome.tabs.create).toHaveBeenCalledWith(
+      expect.objectContaining({ index: 4 }),
+      expect.any(Function),
+    );
+    expect(chrome.tabs.query).toHaveBeenCalledWith(
+      { windowId: 1, url: 'chrome-extension://ext-id/src/viewer/viewer.html*' },
+    );
+  });
+
+  it('父 tab 右侧已有连续预览 tab -> 依次排在其后', async () => {
+    vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ index: 4 }, { index: 5 }] as never);
+    await send({ type: 'OPEN_TRACE_VIEWER', traceUrl: 'https://r.example.com/a.zip' }, { tab: { index: 3, windowId: 1 } });
+    expect(chrome.tabs.create).toHaveBeenCalledWith(
+      expect.objectContaining({ index: 6 }),
+      expect.any(Function),
+    );
+  });
+
+  it('紧邻位置被其他 tab 占用 -> 连续序列断开,插回父 tab 紧右侧', async () => {
+    vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ index: 6 }] as never);
+    await send({ type: 'OPEN_TRACE_VIEWER', traceUrl: 'https://r.example.com/a.zip' }, { tab: { index: 3, windowId: 1 } });
+    expect(chrome.tabs.create).toHaveBeenCalledWith(
+      expect.objectContaining({ index: 4 }),
+      expect.any(Function),
+    );
+  });
+
+  it('无 sender.tab(如 popup 触发) -> 不指定位置,走默认', async () => {
+    await send({ type: 'OPEN_TRACE_VIEWER', traceUrl: 'https://r.example.com/a.zip' });
+    const opts = vi.mocked(chrome.tabs.create).mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(opts.index).toBeUndefined();
   });
 });
