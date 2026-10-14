@@ -1,0 +1,183 @@
+name: Vendor Auto Upgrade
+
+# 每小时检测 npm 上 playwright-core 的 latest 版本;落后即自动走完整升级流水线:
+#
+#   检测(no-op 秒退) → npm install pw@latest(prepare 自动 sync-vendor)
+#   → check-vendor → typecheck/test → build → verify-viewer(--synth-ceiling
+#   正控 + v999 负控) → verify-extension → push `fix:` commit → dispatch release
+#
+# 发版与 z+1 复用 release.yml 路径 A:fix commit → patch bump → tag → 构建 Release。
+# 本工作流不直接改版本号文件 —— release.yml 才是版本号唯一管理者,避免双写冲突。
+#
+# 失败策略:schema 上限跳版常伴随上游产物结构变化,sync-vendor 锚点可能失配;
+# 此时构建必然红(fail-fast 是 sync-vendor 的设计),本工作流建 issue 提醒人工按
+# vendor-upgrade 工作流处理,绝不静默跳过。
+#
+# 备注:GitHub 定时任务仅在默认分支生效,且仓库 60 天无活动会被自动停用(会邮件
+# 通知);playwright-core 稳定版约月更,把 cron 放宽到每天也无妨,当前按需求每小时。
+
+on:
+  schedule:
+    - cron: '0 * * * *' # 每小时整点(UTC)
+  workflow_dispatch: # 手动触发(测试/停用后补偿)
+
+concurrency:
+  group: vendor-auto-upgrade
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push 升级 commit + dispatch release.yml
+  issues: write # 升级失败时建提醒 issue
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # fetch-depth 0:push 撞车时 git pull --rebase 依赖完整历史
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # ── 检测:仅读 lock 与 npm registry,无更新则秒退,不跑 npm ci ──
+      - name: 检测 playwright-core 新版本
+        id: detect
+        run: |
+          set -euo pipefail
+          LATEST=$(npm view playwright-core dist-tags.latest)
+          CURRENT=$(node -p "require('./package-lock.json').packages['node_modules/playwright-core'].version")
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          NEWER=$(node -e "
+            const l = '${LATEST}'.split('.').map(Number);
+            const c = '${CURRENT}'.split('.').map(Number);
+            for (let i = 0; i < 3; i++) {
+              if ((l[i] || 0) > (c[i] || 0)) { console.log('yes'); process.exit(0); }
+              if ((l[i] || 0) < (c[i] || 0)) break;
+            }
+            console.log('no');
+          ")
+          if [ "$NEWER" != "yes" ]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "playwright-core 已是最新($CURRENT),本次无事可做。"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+            echo "检测到新版本:$CURRENT -> $LATEST,开始升级流水线。"
+          fi
+
+      # ── 升级与构建(仅在有新版本时执行) ──
+      - name: 升级 playwright-core 并重同步 vendor viewer
+        if: steps.detect.outputs.updated == 'true'
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
+        run: npm install "playwright-core@$LATEST" # prepare 钩子自动跑 sync-vendor
+
+      - name: 校验 vendor 产物与依赖版本一致
+        if: steps.detect.outputs.updated == 'true'
+        run: npm run check-vendor
+
+      - name: 类型检查与单元测试
+        if: steps.detect.outputs.updated == 'true'
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: 构建
+        if: steps.detect.outputs.updated == 'true'
+        run: npm run build
+
+      # verify-extension 需要支持 --load-extension 的 Chromium(品牌 Chrome 自 137
+      # 起忽略该 flag),按 browsers.json 的 revision 缓存安装。
+      - name: 读取 Chromium revision
+        if: steps.detect.outputs.updated == 'true'
+        id: chromium
+        run: |
+          set -euo pipefail
+          REV=$(node -p "JSON.parse(require('fs').readFileSync('node_modules/playwright-core/browsers.json')).browsers.find(b => b.name === 'chromium').revision")
+          echo "rev=$REV" >> "$GITHUB_OUTPUT"
+
+      - name: 缓存 Chromium
+        if: steps.detect.outputs.updated == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ steps.chromium.outputs.rev }}
+
+      - name: 安装 Chromium
+        if: steps.detect.outputs.updated == 'true'
+        run: node node_modules/playwright-core/cli.js install chromium --with-deps
+
+      - name: verify-extension 指定 CI Chromium
+        if: steps.detect.outputs.updated == 'true'
+        run: echo "CFT_EXE=$HOME/.cache/ms-playwright/chromium-${{ steps.chromium.outputs.rev }}/chrome-linux/chrome" >> "$GITHUB_ENV"
+
+      # --synth-ceiling:从样本合成"新 schema 上限"正控,证明升级目标版本确实能加载;
+      # 自带 v999 负控证明版本校验未被误伤。这是 vendor-upgrade 工作流的硬性要求。
+      - name: 端到端验证(viewer + schema 正负控)
+        if: steps.detect.outputs.updated == 'true'
+        run: node scripts/verify-viewer.mjs samples/trace.zip --synth-ceiling
+
+      - name: 端到端验证(扩展注入/iframe/CSP)
+        if: steps.detect.outputs.updated == 'true'
+        run: node scripts/verify-extension.mjs samples/trace.zip
+
+      # ── 提交并触发发版 ──
+      - name: 提交升级 commit
+        if: steps.detect.outputs.updated == 'true'
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
+        run: |
+          set -euo pipefail
+          CEILING=$(node -e "
+            const fs = require('fs');
+            const sw = fs.readFileSync('public/vendor/trace-viewer/sw.bundle.js', 'utf8');
+            const m = sw.match(/TraceVersionError[^,;]{0,40}[,;]\s*(?:const\s+)?(\w+)=(\d+)/);
+            console.log(m ? m[2] : '?');
+          ")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "fix: vendor viewer 升级至 playwright-core@${LATEST}(跟随上游 trace schema v${CEILING})"
+          # 与并行的 release 版本号提交撞车时 rebase 重试一次
+          if ! git push origin HEAD:main; then
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      # GITHUB_TOKEN 的 push 不产生 on:push 事件(防递归),必须显式 dispatch;
+      # workflow_dispatch 是官方文档明确允许被 GITHUB_TOKEN 触发的例外。
+      # release.yml 路径 A 会:分析本 fix commit → z+1 → 提交版本号 → tag → 构建 Release。
+      - name: 触发发版(z+1)
+        if: steps.detect.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref main
+
+      # ── 失败兜底:建 issue 提醒,绝不静默 ──
+      - name: 升级失败时建提醒 issue
+        if: failure() && steps.detect.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="vendor 自动升级失败: playwright-core@${{ steps.detect.outputs.latest }}"
+          EXISTING=$(gh issue list --state open --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          BODY=$(cat <<EOF
+          自动升级工作流失败,需要人工按 vendor-upgrade 工作流处理。
+
+          - 运行记录: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - 目标版本: playwright-core@${{ steps.detect.outputs.latest }}(当前 ${{ steps.detect.outputs.current }})
+          - 常见原因: sync-vendor 补丁锚点失配(上游产物结构变化)、验证 harness 断言失败
+          - 处理: 本地升级 playwright-core → 修 sync-vendor 锚点 → \`npm run verify:viewer -- samples/trace.zip --synth-ceiling\` 通过后手动发版
+          EOF
+          )
+          if [ -n "$EXISTING" ]; then
+            echo "已有同名 open issue #$EXISTING,追加评论。"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi

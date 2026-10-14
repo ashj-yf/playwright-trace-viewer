@@ -16,6 +16,9 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # vendor-auto-upgrade 用 bot 身份 push 后,GITHUB_TOKEN 产生的 push 事件不会
+  # 触发 on:push(防递归),因此它 push 完会显式 dispatch 本工作流走路径 A。
+  workflow_dispatch:
 
 permissions:
   contents: write

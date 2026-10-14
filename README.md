@@ -163,10 +163,17 @@ Allure 页面 [content script]
 
 ## 发版
 
-项目使用 [release-please](https://github.com/googleapis/release-please) 自动管理版本与发布：
+发版由 `.github/workflows/release.yml` 自动完成，提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)：
 
-1. 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)（`feat:` / `fix:` / `chore:` 等）；
-2. push 到 `main` 后，release-please 自动创建/更新一个 Release PR；
-3. 合并该 PR 即自动打 tag、生成 Changelog、创建 GitHub Release，并由 CI 构建上传 `playwright-trace-viewer-vX.Y.Z.zip`。
+1. push 到 `main` 后，工作流分析自上个 tag 以来的提交类型（`feat:` → minor、`fix:/perf:/refactor:` → patch），自动递增版本号、同步更新 `package.json` 与 `src/manifest.json`、打 tag，并构建上传 `playwright-trace-viewer-vX.Y.Z.zip` 到 GitHub Release；
+2. 手动 `git tag vX.Y.Z && git push origin vX.Y.Z` 直接触发构建发布。
 
-> 版本号同时维护在 `package.json` 与 `src/manifest.json`，由 release-please 自动同步。由于 Chrome 扩展版本号不支持预发布后缀，prerelease 版本需手动通过 `gh release create --prerelease` 创建。
+> 版本号同时维护在 `package.json` 与 `src/manifest.json`，由 release 工作流自动同步。由于 Chrome 扩展版本号不支持预发布后缀，prerelease 版本需手动通过 `gh release create --prerelease` 创建。
+
+### vendor viewer 自动跟随上游
+
+`.github/workflows/vendor-auto-upgrade.yml` 每小时检测 npm 上 `playwright-core` 的 latest 版本；落后时自动执行完整升级流水线：`npm install playwright-core@latest`（prepare 钩子自动重同步 vendor 并打补丁）→ `check-vendor` → 单测 → 构建 → `verify-viewer` schema 正负控（`--synth-ceiling` 合成新上限正控 + v999 负控）→ `verify-extension`。全绿后推 `fix:` commit 并显式 dispatch release 工作流，由其完成 z+1 发版。
+
+> - GITHUB_TOKEN 的 push 不会触发其他 workflow 的 `on: push`（防递归），所以升级工作流推完 commit 后需显式 `gh workflow run release.yml --ref main`。
+> - 升级失败（常见于上游产物结构变化导致 sync-vendor 锚点失配）会自动创建提醒 issue，绝不静默跳过。
+> - GitHub 定时任务在仓库 60 天无活动后会被自动停用（会邮件通知）；playwright-core 稳定版约月更，也可按需放宽 cron。

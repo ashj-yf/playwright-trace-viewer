@@ -534,11 +534,12 @@ async function loadTrace(page, url, { timeoutMs, lookForVersionError }) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { paths: [], timeoutMs: 90000, selftest: true, expectError: false, keepFixtures: false, headed: false, viewerDir: null };
+  const opts = { paths: [], timeoutMs: 90000, selftest: true, expectError: false, keepFixtures: false, headed: false, viewerDir: null, synthCeiling: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--timeout') opts.timeoutMs = Number(argv[++i]);
     else if (a === '--no-selftest') opts.selftest = false;
+    else if (a === '--synth-ceiling') opts.synthCeiling = true;
     else if (a === '--expect-error') opts.expectError = true;
     else if (a === '--keep-fixtures') opts.keepFixtures = true;
     else if (a === '--viewer-dir') opts.viewerDir = argv[++i];
@@ -557,6 +558,10 @@ Verifies that dist/vendor/trace-viewer actually opens the given trace zips.
 Options:
   --timeout <ms>    Per-trace settle timeout (default 90000)
   --no-selftest     Skip the synthesized "version 999" negative control
+  --synth-ceiling   Synthesize a positive control at the viewer's schema ceiling
+                    (derived from the first trace; MUST load). Use after a
+                    vendor upgrade to prove the new ceiling actually admits
+                    the schema version the upgrade targets.
   --expect-error    Treat positional/default traces as expected-to-error
   --keep-fixtures   Do not delete the synthesized fixture
   --viewer-dir <d>  Verify a different viewer build (default dist/vendor/trace-viewer)
@@ -700,6 +705,51 @@ async function main() {
       );
     } catch (err) {
       console.log(`\n  [self-test] could not build the version-999 control: ${err.message}`);
+    }
+  }
+
+  // --- positive control: force the trace header to the viewer's ceiling ----
+  // Vendor 升级后必须验证"新上限真的放行目标 schema 版本"(仅靠 999 负控只能证明
+  // 校验仍在,不能证明新版本能加载)。从首个真实 trace 派生、版本改为当前 ceiling,
+  // 预期 LOADED。样本本身已等于 ceiling 时无需合成(真实样本即正控)。
+  if (opts.synthCeiling) {
+    if (ceiling === null) {
+      console.error('\nFATAL: --synth-ceiling needs the schema ceiling, but it could not be extracted from the vendored sw.bundle.js.');
+      return 2;
+    }
+    const source = cases.find((c) => !c.synthetic);
+    if (!source) {
+      console.error('\nFATAL: --synth-ceiling needs at least one real trace to derive from.');
+      return 2;
+    }
+    if (source.info.version === ceiling) {
+      console.log(`\n  [ceiling-control] ${source.label} is already at the ceiling v${ceiling}; it doubles as the positive control.`);
+    } else {
+      try {
+        if (!fixtureDir) {
+          await fsp.mkdir(path.join(REPO_ROOT, 'scripts', 'fixtures'), { recursive: true });
+          fixtureDir = await fsp.mkdtemp(path.join(REPO_ROOT, 'scripts', 'fixtures', 'run-'));
+        }
+        const { buffer, originalVersion } = synthesizeTooNewTrace(source.zipBuf, ceiling);
+        const fixturePath = path.join(fixtureDir, `version-${ceiling}-positive-control.zip`);
+        await fsp.writeFile(fixturePath, buffer);
+        cases.push({
+          label: `version-${ceiling}-positive-control.zip`,
+          file: fixturePath,
+          zipBuf: buffer,
+          info: inspectTrace(buffer),
+          expect: 'load',
+          synthetic: true,
+        });
+        console.log(`\n  [ceiling-control] synthesized ${fixturePath}`);
+        console.log(
+          `      derived from ${source.label}, version forced ${originalVersion} -> ${ceiling} ` +
+            `-> MUST load (this is the schema the vendor upgrade targets)`,
+        );
+      } catch (err) {
+        console.error(`\nFATAL: could not build the version-${ceiling} positive control: ${err.message}`);
+        return 2;
+      }
     }
   }
 
