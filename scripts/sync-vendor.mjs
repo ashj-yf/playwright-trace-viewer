@@ -124,7 +124,7 @@ load(snapshotHtml);
 if (existsSync(join(DEST, uiModeHtml))) load(uiModeHtml);
 
 // index.html 里的 script src 与 assets/* 中的 hash chunk 需精确对应。
-const indexJsName = files.get(indexHtml).match(/src="\.\/(index\.\w+\.js)"/)?.[1];
+const indexJsName = files.get(indexHtml).match(/src="\.\/(index\.[\w-]+\.js)"/)?.[1];
 if (!indexJsName) throw new Error('index.html 中未找到 index.<hash>.js 引用');
 load(indexJsName);
 
