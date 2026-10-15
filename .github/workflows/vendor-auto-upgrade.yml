@@ -2,7 +2,8 @@ name: Vendor Auto Upgrade
 
 # 每小时检测 npm 上 playwright-core 的 latest 版本;落后即自动走完整升级流水线:
 #
-#   检测(no-op 秒退) → npm install pw@latest(prepare 自动 sync-vendor)
+#   检测(no-op 秒退) → npm install pw@latest + 显式 sync-vendor(带参数的
+#   npm install 不触发 prepare 钩子,必须显式跑,否则 check-vendor 必挂)
 #   → check-vendor → typecheck/test → build → verify-viewer(--synth-ceiling
 #   正控 + v999 负控) → verify-extension → push `fix:` commit → dispatch release
 #
@@ -75,7 +76,9 @@ jobs:
         if: steps.detect.outputs.updated == 'true'
         env:
           LATEST: ${{ steps.detect.outputs.latest }}
-        run: npm install "playwright-core@$LATEST" # prepare 钩子自动跑 sync-vendor
+        run: |
+          npm install "playwright-core@$LATEST"
+          node scripts/sync-vendor.mjs
 
       - name: 校验 vendor 产物与依赖版本一致
         if: steps.detect.outputs.updated == 'true'
