@@ -117,7 +117,10 @@ jobs:
 
       - name: verify-extension 指定 CI Chromium
         if: steps.detect.outputs.updated == 'true'
-        run: echo "CFT_EXE=$HOME/.cache/ms-playwright/chromium-${{ steps.chromium.outputs.rev }}/chrome-linux/chrome" >> "$GITHUB_ENV"
+        run: |
+          # 目录布局随上游变化(1.64 起 linux-x64 为 chrome-linux64/chrome),
+          # 用官方 API 解析实际路径,勿硬编码
+          echo "CFT_EXE=$(node -p "require('playwright-core').chromium.executablePath()")" >> "$GITHUB_ENV"
 
       # --synth-ceiling:从样本合成"新 schema 上限"正控,证明升级目标版本确实能加载;
       # 自带 v999 负控证明版本校验未被误伤。这是 vendor-upgrade 工作流的硬性要求。
