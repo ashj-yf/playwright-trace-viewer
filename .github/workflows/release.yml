@@ -167,9 +167,9 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           PREV_TAG=$(git tag --sort=-version:refname | grep -A1 "^${TAG}$" | tail -1)
           if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ]; then
-            NOTES=$(git log --pretty=format:"* %s (%h)" --no-merges 2>/dev/null | grep -E '^\* (feat|fix):' || echo "首次发布")
+            NOTES=$(git log --pretty=format:"* %s (%h)" --no-merges 2>/dev/null | grep -E '^\* (feat|fix|perf|refactor)(\(.+\))?:' || echo "首次发布")
           else
-            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"* %s (%h)" --no-merges 2>/dev/null | grep -E '^\* (feat|fix):' || true)
+            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"* %s (%h)" --no-merges 2>/dev/null | grep -E '^\* (feat|fix|perf|refactor)(\(.+\))?:' || true)
           fi
           # 仅凭 commit 标题看不出"这个包内置了哪个 playwright-core",每个 release 固定附版本信息
           PW_VER=$(node -p "require('./node_modules/playwright-core/package.json').version")
