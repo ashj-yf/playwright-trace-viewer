@@ -27,7 +27,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # push 升级 commit + dispatch release.yml
+  contents: write # push 升级 commit
+  actions: write # dispatch release.yml(显式 permissions 块下缺省 scope 为 none,403)
   issues: write # 升级失败时建提醒 issue
 
 jobs:
