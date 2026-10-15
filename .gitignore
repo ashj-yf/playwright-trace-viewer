@@ -4,6 +4,8 @@ node_modules/
 # 构建产物
 dist/
 *.zip
+# verify-* 端到端验证的真实 trace 样本(CI 依赖,必须入库)
+!samples/trace.zip
 
 # 第三方产物(由 prepare 脚本从 playwright-core 同步)
 public/vendor/
