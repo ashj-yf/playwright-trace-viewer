@@ -180,6 +180,14 @@ try {
     const logs = [];
     viewer.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
     viewer.on('pageerror', (e) => logs.push(`[pageerror] ${e}`));
+    // /snapshot/ 请求失败 = 中间 view pane 空白(loader 名漂移、SW 路由失配等)。
+    // action 列表由 /contexts 渲染,不依赖 snapshot 路由,所以只断言 actionRows 发现不了。
+    const failedSnapshot = [];
+    viewer.on('requestfailed', (r) => {
+      if (/\/snapshot\//.test(r.url())) {
+        failedSnapshot.push(`${r.url().slice(0, 120)} -> ${r.failure()?.errorText}`);
+      }
+    });
     // 让 iframe 内的 viewer 注册 SW、解析 zip、渲染。
     await viewer.waitForTimeout(15000);
 
@@ -208,9 +216,35 @@ try {
     console.log(`    文本片段: ${bodyText.slice(0, 160).replace(/\n+/g, ' | ')}`);
     if (!loaded) failures++;
 
-    // ── 步骤 4:扩展页上不得有 CSP 违规 / 版本错误 ──
+    // ── 步骤 4:中间 view pane 的 snapshot 必须真正渲染 ──
+    // viewer 默认选中第一个 action 就会拉 /snapshot/... 渲染页面快照。
+    // 1.64 升级时 SW 注入代码仍调用旧版 minified 名(ga=Map),TypeError 令
+    // snapshot 导航 net::ERR_FAILED,action 列表正常但 view pane 整列空白。
+    let snapFrame = null;
+    let snapBodyCount = 0;
+    for (let i = 0; i < 20; i++) {
+      snapFrame = viewer.frames().find((f) => /\/snapshot\//.test(f.url()));
+      if (snapFrame) {
+        snapBodyCount = await snapFrame
+          .evaluate(() => document.body?.children?.length ?? 0)
+          .catch(() => 0);
+        if (snapBodyCount > 0) break;
+      }
+      await viewer.waitForTimeout(500);
+    }
+    const snapText = snapFrame && snapBodyCount > 0
+      ? await snapFrame.locator('body').innerText().catch(() => '')
+      : '';
+    const snapshotOk = snapBodyCount > 0 && failedSnapshot.length === 0;
+    console.log(`[4] view pane snapshot 渲染: ${snapshotOk ? 'PASS' : 'FAIL'}`);
+    console.log(`    snapFrame=${snapFrame ? 'ok' : 'MISSING'} bodyChildren=${snapBodyCount} failedReqs=${failedSnapshot.length}`);
+    if (snapText) console.log(`    快照文本片段: ${snapText.slice(0, 120).replace(/\n+/g, ' | ')}`);
+    if (failedSnapshot.length) console.log('    失败请求:', failedSnapshot.join(' | '));
+    if (!snapshotOk) failures++;
+
+    // ── 步骤 5:扩展页上不得有 CSP 违规 / 版本错误 ──
     const cspViolation = logs.some((l) => /Content Security Policy|Refused to execute inline/i.test(l));
-    console.log(`[4] 无 CSP 违规(扩展页 inline script 已外部化): ${cspViolation ? 'FAIL' : 'PASS'}`);
+    console.log(`[5] 无 CSP 违规(扩展页 inline script 已外部化): ${cspViolation ? 'FAIL' : 'PASS'}`);
     if (cspViolation) {
       failures++;
       console.log('    相关日志:', logs.filter((l) => /Content Security Policy/i.test(l)).slice(0, 3).join('\n              '));

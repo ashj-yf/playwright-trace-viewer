@@ -274,6 +274,23 @@ patch({
 //    子资源请求也会被当成导航,样式/图片会全部走网络而失败。
 // ② /snapshot-script/:serveSnapshot 已把 inline script 外部化为同源脚本(见下个补丁),
 //    此路由返回其缓存内容。用请求 URL 作 key,与注入的 <script src> 完全一致。
+// 从官方 snapshot 导航分支抓取 trace 加载函数与 progress 回调的 minified 名。
+// 绝不能硬编码:升级 playwright-core 后这两个局部名会漂移 —— 1.64 升级时,
+// 旧版加载函数名 ga 变成了 clientId→traceURL 的 Map,旧版 progress 名 Ca
+// 变成了 coverage 序列化函数,注入代码 `await ga(cid,url,Ca)` 运行时抛
+// TypeError: ga is not a function,/snapshot/ 导航 net::ERR_FAILED,
+// viewer 中间 view pane 整列空白(action 列表仍正常,极易漏检)。
+const offSnapLoaderMatch = swSrc.match(
+  new RegExp(
+    'startsWith\\(`/snapshot/`\\)\\)\\{let\\{errorResponse:\\w+,loadedTrace:\\w+\\}' +
+      '=await (\\w+)\\(' + swEventVar + '\\.resultingClientId,' + swUrlVar + ',(\\w+)\\)',
+  ),
+);
+if (!offSnapLoaderMatch) {
+  throw new Error('sw.bundle.js 中未找到官方 snapshot 加载分支(loader/progress 名)');
+}
+const [, snapLoaderVar, snapProgressVar] = offSnapLoaderMatch;
+
 const earlyRoutes = (() => {
   const cspAppend = swHttpsVar
     ? `return ${swHttpsVar}&&PW_SN.headers.append("Content-Security-Policy","upgrade-insecure-requests"),PW_SN`
@@ -281,7 +298,7 @@ const earlyRoutes = (() => {
   return (
     `if(${swPathVar}!=null&&${swPathVar}.startsWith("/snapshot/")){` +
     `var PW_CID=${swEventVar}.resultingClientId||${swEventVar}.clientId;` +
-    `if(PW_CID){var PW_R=await ga(PW_CID,${swUrlVar},Ca);` +
+    `if(PW_CID){var PW_R=await ${snapLoaderVar}(PW_CID,${swUrlVar},${snapProgressVar});` +
     `if(PW_R.errorResponse)return PW_R.errorResponse;` +
     `var PW_SN=PW_R.loadedTrace.snapshotServer.serveSnapshot(decodeURIComponent(${swPathVar}.substring(10)),${swUrlVar}.searchParams,${swUrlVar}.href);` +
     `${cspAppend}}}` +
@@ -550,6 +567,16 @@ assertContains(swFile, 'sw: zip BlobReader 已注入', 'BlobReader');
 assertContains(indexJsName, 'index: 文件 PUT 上传已注入', 'method:`PUT`');
 assertContains('upload.js', 'upload: 上传桥已生成', 'atv-upload-result');
 assertContains(swFile, 'sw: chrome-extension 短路已移除', 'startsWith("/snapshot/")');
+// 防回归:snapshot 兜底路由必须调用官方同名的 async 加载函数(而非漂移到 Map 等其他符号)。
+assertContains(swFile, 'sw: snapshot loader 名与官方分支一致', `await ${snapLoaderVar}(PW_CID,`);
+if (!new RegExp(`async function ${snapLoaderVar}\\(`).test(files.get(swFile))) {
+  results.push({
+    file: swFile,
+    label: `sw: snapshot loader "${snapLoaderVar}" 不是 async function(符号名漂移)`,
+    ok: false,
+    required: true,
+  });
+}
 if (/chrome-extension:\/\/["`]\)\)return fetch\(/.test(files.get(swFile))) {
   results.push({
     file: swFile,
