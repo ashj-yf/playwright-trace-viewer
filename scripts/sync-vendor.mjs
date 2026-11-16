@@ -421,8 +421,10 @@ patch({
 // 优先级:selectedTime(拖选时间轴) > playing(播放) > highlighted action(点击/悬停)
 // 拖选时精确筛选,播放/点击时从起点累积到当前位置/action 结束。
 // 相关局部量都从 pristine 源码里按结构抓取,避免硬编码 minify 后的变量名。
+// 注意 React 命名空间别名同样会漂移(1.64.x 为 T、1.65.x 起为 o),连命名空间
+// 一起用 (\w+) 抓,切勿写死单字母前缀。
 const playback = dsSrc.match(/(\w+)=(\w+)\((\w+)\|\|\[\],(\w+),(\w+),(\w+),(\w+)\)/);
-const highlighted = dsSrc.match(/(\w+)=T\.useMemo\(\(\)=>(\w+)\|\|(\w+),\[(\w+),(\w+)\]\)/);
+const highlighted = dsSrc.match(/(\w+)=(\w+)\.useMemo\(\(\)=>(\w+)\|\|(\w+),\[(\w+),(\w+)\]\)/);
 const netCall = dsSrc.match(
   /(\w+)=(\w+)\((\w+),(\w+)\),(\w+)=(\w+)\((\w+),(\w+)\)(?=,\w+=)/,
 );
