@@ -14,12 +14,18 @@ name: Vendor Auto Upgrade
 # 此时构建必然红(fail-fast 是 sync-vendor 的设计),本工作流建 issue 提醒人工按
 # vendor-upgrade 工作流处理,绝不静默跳过。
 #
+# 定时任务已于 2026-11-16 停用:playwright-core 1.65.x(11-05 起)的 minify 产物把
+# React 命名空间别名从 T 改成 o,sync-vendor 的 highlighted 锚点硬编码了 T.useMemo
+# 而失配,流水线自 1.65.0 发布起持续失败(跟踪 issue #6/#7)。当前仅保留手动触发。
+# 恢复自动升级需两步:① 修复 sync-vendor 锚点并验证 1.65.x 全补丁通过;
+# ② gh workflow enable 并恢复下方 schedule 块(GitHub 手动停用后 push 不会自动启用)。
+#
 # 备注:GitHub 定时任务仅在默认分支生效,且仓库 60 天无活动会被自动停用(会邮件
-# 通知);playwright-core 稳定版约月更,把 cron 放宽到每天也无妨,当前按需求每小时。
+# 通知);playwright-core 稳定版约月更,把 cron 放宽到每天也无妨,历史上按需求每小时。
 
 on:
-  schedule:
-    - cron: '0 * * * *' # 每小时整点(UTC)
+  # schedule:
+  #   - cron: '0 * * * *' # 每小时整点(UTC)—— 2026-11-16 停用,原因见文件头注释
   workflow_dispatch: # 手动触发(测试/停用后补偿)
 
 concurrency:
